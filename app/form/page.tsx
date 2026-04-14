@@ -223,10 +223,10 @@ export default function FormPage() {
     }, 260);
   }
 
-  async function goNext() {
+  async function goNext(overrideAnswer?: string) {
     if (isAnimating || isSubmitting) return;
 
-    const answer = answers[question.id] ?? "";
+    const answer = overrideAnswer ?? answers[question.id] ?? "";
 
     if (question.required && !answer.trim()) {
       setError("Please fill in this field to continue.");
@@ -284,7 +284,7 @@ export default function FormPage() {
     }
 
     setTimeout(() => {
-      void goNext();
+      void goNext(value);
     }, 350);
   }
 
@@ -520,8 +520,16 @@ export default function FormPage() {
         </div>
       </div>
 
-      <div className="fixed bottom-6 left-6 text-xs text-gray-400">
-        {step + 1} / {questions.length}
+      <div className="fixed bottom-6 left-6 flex items-center gap-3">
+        <span className="text-xs text-gray-400">
+          {step + 1} / {questions.length}
+        </span>
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="text-xs text-gray-400 underline underline-offset-2 hover:text-gray-600 transition-colors"
+        >
+          Go to dashboard
+        </button>
       </div>
 
       <div className="fixed bottom-6 right-6 flex gap-2">

@@ -336,6 +336,19 @@ export async function getUsers(): Promise<User[]> {
   return request<User[]>('/users');
 }
 
+export async function getUser(userId: string): Promise<User | null> {
+  if (USE_MOCK_DATA) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    return { id: userId, email: 'mock@example.com' };
+  }
+
+  try {
+    return await request<User>(`/users/${userId}`);
+  } catch {
+    return null;
+  }
+}
+
 export async function deleteUser(userId: string): Promise<void> {
   if (USE_MOCK_DATA) {
     await new Promise((resolve) => setTimeout(resolve, 300));

@@ -2,24 +2,99 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { deleteUser, type Recommendation } from '@/lib/recommendations';
+import { deleteUser, getUser, submitQuestionnaire, type Recommendation } from '@/lib/recommendations';
 
 function formatCurrency(value: number | null) {
   if (value === null) return 'N/A';
   return `R ${value.toLocaleString()}`;
 }
 
-const LABEL: Record<string, string> = {
-  gender: 'Gender',
-  location: 'City',
-  net_salary: 'Monthly salary',
-  credit_score: 'Credit score',
-  years_licenced: 'Years licenced',
-  preferred_brand: 'Preferred brand',
-  car_type: 'Car type',
-  fuel_type: 'Fuel type',
-  transmission: 'Transmission',
-};
+const FIELD_CONFIG: {
+  key: string;
+  label: string;
+  type: 'text' | 'choice';
+  options?: { value: string; label: string }[];
+}[] = [
+  {
+    key: 'gender',
+    label: 'Gender',
+    type: 'choice',
+    options: [
+      { value: 'male', label: 'Male' },
+      { value: 'female', label: 'Female' },
+      { value: 'non-binary', label: 'Non-binary' },
+      { value: 'prefer-not-to-say', label: 'Prefer not to say' },
+    ],
+  },
+  { key: 'location', label: 'City', type: 'text' },
+  { key: 'net_salary', label: 'Monthly salary', type: 'text' },
+  {
+    key: 'credit_score',
+    label: 'Credit score',
+    type: 'choice',
+    options: [
+      { value: 'below-600', label: 'Below 600 (Poor)' },
+      { value: '600-699', label: '600 – 699 (Fair)' },
+      { value: '700-749', label: '700 – 749 (Good)' },
+      { value: '750-plus', label: '750+ (Excellent)' },
+    ],
+  },
+  {
+    key: 'years_licenced',
+    label: 'Years licenced',
+    type: 'choice',
+    options: [
+      { value: 'less-than-1', label: 'Less than 1 year' },
+      { value: '1-3', label: '1 – 3 years' },
+      { value: '3-5', label: '3 – 5 years' },
+      { value: '5-plus', label: '5+ years' },
+    ],
+  },
+  {
+    key: 'preferred_brand',
+    label: 'Preferred brand',
+    type: 'text',
+  },
+  {
+    key: 'car_type',
+    label: 'Car type',
+    type: 'choice',
+    options: [
+      { value: 'hatchback', label: 'Hatchback' },
+      { value: 'sedan', label: 'Sedan' },
+      { value: 'suv', label: 'SUV' },
+      { value: 'bakkie', label: 'Bakkie' },
+    ],
+  },
+  {
+    key: 'fuel_type',
+    label: 'Fuel type',
+    type: 'choice',
+    options: [
+      { value: 'petrol', label: 'Petrol' },
+      { value: 'diesel', label: 'Diesel' },
+      { value: 'hybrid', label: 'Hybrid' },
+      { value: 'electric', label: 'Electric' },
+    ],
+  },
+  {
+    key: 'transmission',
+    label: 'Transmission',
+    type: 'choice',
+    options: [
+      { value: 'manual', label: 'Manual' },
+      { value: 'automatic', label: 'Automatic' },
+    ],
+  },
+];
+
+function displayValue(key: string, value: string, config: typeof FIELD_CONFIG[number]) {
+  if (config.type === 'choice' && config.options) {
+    const match = config.options.find((o) => o.value === value);
+    return match ? match.label : value.replace(/-/g, ' ');
+  }
+  return value;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -32,19 +107,72 @@ export default function DashboardPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
+  // Edit state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedAnswers, setEditedAnswers] = useState<Record<string, string>>({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
   useEffect(() => {
-    setEmail(sessionStorage.getItem('user_email') ?? '');
-    setUserId(sessionStorage.getItem('user_id') ?? '');
+    const storedId = sessionStorage.getItem('user_id') ?? '';
 
-    const raw = sessionStorage.getItem('recommendations');
-    if (raw) setRecommendations(JSON.parse(raw) as Recommendation[]);
+    if (!storedId) {
+      router.replace('/');
+      return;
+    }
 
-    const src = sessionStorage.getItem('result_source');
-    if (src === 'api' || src === 'mock') setResultSource(src);
+    getUser(storedId).then((user) => {
+      if (!user) {
+        sessionStorage.clear();
+        router.replace('/');
+        return;
+      }
 
-    const rawAnswers = sessionStorage.getItem('form_answers');
-    if (rawAnswers) setAnswers(JSON.parse(rawAnswers) as Record<string, string>);
-  }, []);
+      setEmail(sessionStorage.getItem('user_email') ?? '');
+      setUserId(storedId);
+
+      const raw = sessionStorage.getItem('recommendations');
+      if (raw) setRecommendations(JSON.parse(raw) as Recommendation[]);
+
+      const src = sessionStorage.getItem('result_source');
+      if (src === 'api' || src === 'mock') setResultSource(src);
+
+      const rawAnswers = sessionStorage.getItem('form_answers');
+      if (rawAnswers) setAnswers(JSON.parse(rawAnswers) as Record<string, string>);
+    });
+  }, [router]);
+
+  function startEditing() {
+    setEditedAnswers({ ...answers });
+    setSaveError('');
+    setIsEditing(true);
+  }
+
+  function cancelEditing() {
+    setIsEditing(false);
+    setSaveError('');
+  }
+
+  async function saveEdits() {
+    setIsSaving(true);
+    setSaveError('');
+    try {
+      const result = await submitQuestionnaire(editedAnswers, userId, email);
+      setAnswers(editedAnswers);
+      setRecommendations(result.recommendations);
+      setResultSource(result.source);
+      sessionStorage.setItem('form_answers', JSON.stringify(editedAnswers));
+      sessionStorage.setItem('recommendations', JSON.stringify(result.recommendations));
+      sessionStorage.setItem('result_source', result.source);
+      setIsEditing(false);
+    } catch (err) {
+      setSaveError(
+        err instanceof Error ? err.message : 'Something went wrong. Please try again.'
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   async function handleDeleteAccount() {
     setIsDeleting(true);
@@ -61,7 +189,7 @@ export default function DashboardPage() {
     }
   }
 
-  const profileFields = Object.entries(LABEL).filter(([key]) => answers[key]);
+  const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -84,7 +212,37 @@ export default function DashboardPage() {
 
         {/* Profile card */}
         <section className="bg-white rounded-2xl border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Your profile</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Your profile</h2>
+            {!isEditing ? (
+              <button
+                onClick={startEditing}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.753.445l-3.026.877a.75.75 0 0 1-.929-.929l.877-3.026a1.75 1.75 0 0 1 .445-.753l8.436-8.784Z" fill="currentColor"/>
+                </svg>
+                Edit
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={cancelEditing}
+                  disabled={isSaving}
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveEdits}
+                  disabled={isSaving}
+                  className="rounded-lg bg-blue-500 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isSaving ? 'Saving...' : 'Save & refresh'}
+                </button>
+              </div>
+            )}
+          </div>
 
           <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-100">
             <div className="h-14 w-14 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xl font-bold select-none">
@@ -95,14 +253,47 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {saveError && (
+            <p className="mb-4 text-sm text-red-500">{saveError}</p>
+          )}
+
           {profileFields.length > 0 && (
-            <dl className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-3">
-              {profileFields.map(([key, label]) => (
-                <div key={key}>
-                  <dt className="text-xs text-gray-400 uppercase tracking-wide">{label}</dt>
-                  <dd className="mt-0.5 text-sm font-medium text-gray-800 capitalize">
-                    {answers[key].replace(/-/g, ' ')}
-                  </dd>
+            <dl className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-3">
+              {profileFields.map((config) => (
+                <div key={config.key}>
+                  <dt className="text-xs text-gray-400 uppercase tracking-wide mb-1">
+                    {config.label}
+                  </dt>
+                  {isEditing ? (
+                    config.type === 'choice' && config.options ? (
+                      <select
+                        value={editedAnswers[config.key] ?? ''}
+                        onChange={(e) =>
+                          setEditedAnswers((prev) => ({ ...prev, [config.key]: e.target.value }))
+                        }
+                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      >
+                        {config.options.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={editedAnswers[config.key] ?? ''}
+                        onChange={(e) =>
+                          setEditedAnswers((prev) => ({ ...prev, [config.key]: e.target.value }))
+                        }
+                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                    )
+                  ) : (
+                    <dd className="text-sm font-medium text-gray-800">
+                      {displayValue(config.key, answers[config.key], config)}
+                    </dd>
+                  )}
                 </div>
               ))}
             </dl>

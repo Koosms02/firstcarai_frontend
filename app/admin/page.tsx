@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { getUsers, deleteUser, type User } from '@/lib/recommendations';
 
 export default function AdminPage() {
@@ -101,9 +101,8 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {users.map((user) => (
-                  <>
+                  <React.Fragment key={user.id}>
                     <tr
-                      key={user.id}
                       className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors"
                     >
                       <td className="px-6 py-4 font-medium text-gray-900">{user.email}</td>
@@ -152,7 +151,7 @@ export default function AdminPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
