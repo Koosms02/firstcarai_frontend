@@ -176,7 +176,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(errorText || `Request failed with status ${response.status}`);
+    let message = `Request failed with status ${response.status}`;
+    try {
+      const parsed = JSON.parse(errorText) as { message?: string };
+      if (parsed.message) message = parsed.message;
+    } catch {
+      if (errorText) message = errorText;
+    }
+    throw new Error(message);
   }
 
   return (await response.json()) as T;
@@ -303,6 +310,30 @@ export async function submitQuestionnaire(
     source: 'api' as const,
     recommendations: recommendations.map(toRecommendation),
   };
+}
+
+export type User = {
+  id: string;
+  email: string;
+  netSalary?: number | null;
+  creditScore?: number | null;
+  yearsLicensed?: number | null;
+  gender?: string | null;
+  location?: string | null;
+  createdAt?: string | null;
+};
+
+export async function getUsers(): Promise<User[]> {
+  if (USE_MOCK_DATA) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return [
+      { id: 'mock-user-1', email: 'alice@example.com', gender: 'female', location: 'Cape Town', netSalary: 25000, creditScore: 720, yearsLicensed: 3 },
+      { id: 'mock-user-2', email: 'bob@example.com', gender: 'male', location: 'Johannesburg', netSalary: 18000, creditScore: 650, yearsLicensed: 1 },
+      { id: 'mock-user-3', email: 'charlie@example.com', gender: 'male', location: 'Durban', netSalary: 32000, creditScore: 770, yearsLicensed: 6 },
+    ];
+  }
+
+  return request<User[]>('/users');
 }
 
 export async function deleteUser(userId: string): Promise<void> {
