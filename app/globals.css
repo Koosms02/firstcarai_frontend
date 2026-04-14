@@ -116,6 +116,32 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+:root {
+  --skeleton: #e2e8f0;
+}
+.dark {
+  --skeleton: #334155;
+}
+
+@keyframes ripple {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(0.9); }
+}
+
+@keyframes orbit {
+  0% { rotate: 0deg; transform: translate(-50%, -50%) translateX(var(--radius, 50px)) rotate(0deg); }
+  100% { rotate: 360deg; transform: translate(-50%, -50%) translateX(var(--radius, 50px)) rotate(-360deg); }
+}
+
+@layer utilities {
+  .animate-ripple {
+    animation: ripple calc(var(--duration, 2) * 1s) ease calc(var(--delay, 0) * 1s) infinite;
+  }
+  .animate-orbit {
+    animation: orbit calc(var(--duration) * 1s) linear infinite;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

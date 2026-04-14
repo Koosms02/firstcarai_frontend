@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 380" fill="none">
+  <!-- Car body shadow -->
+  <ellipse cx="400" cy="340" rx="320" ry="22" fill="#1a3a6b" opacity="0.18"/>
+  <!-- Main body lower -->
+  <rect x="80" y="240" width="640" height="90" rx="16" fill="#2563eb"/>
+  <!-- Main body upper (cabin) -->
+  <path d="M200 240 C220 180 260 150 310 145 L490 145 C540 145 580 175 600 240 Z" fill="#1d4ed8"/>
+  <!-- Windshield -->
+  <path d="M300 155 C290 185 288 220 292 240 L500 240 C504 220 502 185 492 155 Z" fill="#93c5fd" opacity="0.7"/>
+  <!-- Windshield divider -->
+  <line x1="396" y1="155" x2="396" y2="240" stroke="#1d4ed8" stroke-width="3"/>
+  <!-- Side windows -->
+  <path d="M200 200 C210 185 230 175 258 172 L280 172 L278 240 L195 240 Z" fill="#93c5fd" opacity="0.5"/>
+  <path d="M502 172 L524 172 C552 175 572 185 582 200 L597 240 L514 240 Z" fill="#93c5fd" opacity="0.5"/>
+  <!-- Door lines -->
+  <line x1="360" y1="185" x2="356" y2="240" stroke="#1e40af" stroke-width="2"/>
+  <!-- Front bumper -->
+  <path d="M80 280 Q60 285 55 300 L80 310 Z" fill="#1d4ed8"/>
+  <rect x="55" y="295" width="40" height="18" rx="6" fill="#93c5fd" opacity="0.8"/>
+  <!-- Rear bumper -->
+  <path d="M720 280 Q740 285 745 300 L720 310 Z" fill="#1d4ed8"/>
+  <rect x="700" y="295" width="40" height="18" rx="6" fill="#93c5fd" opacity="0.5"/>
+  <!-- Front headlight -->
+  <rect x="84" y="258" width="36" height="16" rx="5" fill="#fef08a"/>
+  <rect x="84" y="258" width="36" height="16" rx="5" fill="url(#headlight)" opacity="0.7"/>
+  <!-- Rear light -->
+  <rect x="678" y="258" width="36" height="16" rx="5" fill="#ef4444"/>
+  <!-- Roof rack detail -->
+  <rect x="280" y="144" width="240" height="5" rx="2" fill="#1e40af"/>
+  <!-- Front wheel well -->
+  <ellipse cx="200" cy="328" rx="72" ry="72" fill="#1e293b"/>
+  <ellipse cx="200" cy="328" rx="56" ry="56" fill="#334155"/>
+  <ellipse cx="200" cy="328" rx="40" ry="40" fill="#1e293b"/>
+  <ellipse cx="200" cy="328" rx="24" ry="24" fill="#64748b"/>
+  <ellipse cx="200" cy="328" rx="10" ry="10" fill="#94a3b8"/>
+  <!-- Wheel spokes front -->
+  <line x1="200" y1="304" x2="200" y2="352" stroke="#94a3b8" stroke-width="3"/>
+  <line x1="176" y1="328" x2="224" y2="328" stroke="#94a3b8" stroke-width="3"/>
+  <line x1="183" y1="311" x2="217" y2="345" stroke="#94a3b8" stroke-width="3"/>
+  <line x1="183" y1="345" x2="217" y2="311" stroke="#94a3b8" stroke-width="3"/>
+  <!-- Rear wheel well -->
+  <ellipse cx="590" cy="328" rx="72" ry="72" fill="#1e293b"/>
+  <ellipse cx="590" cy="328" rx="56" ry="56" fill="#334155"/>
+  <ellipse cx="590" cy="328" rx="40" ry="40" fill="#1e293b"/>
+  <ellipse cx="590" cy="328" rx="24" ry="24" fill="#64748b"/>
+  <ellipse cx="590" cy="328" rx="10" ry="10" fill="#94a3b8"/>
+  <!-- Wheel spokes rear -->
+  <line x1="590" y1="304" x2="590" y2="352" stroke="#94a3b8" stroke-width="3"/>
+  <line x1="566" y1="328" x2="614" y2="328" stroke="#94a3b8" stroke-width="3"/>
+  <line x1="573" y1="311" x2="607" y2="345" stroke="#94a3b8" stroke-width="3"/>
+  <line x1="573" y1="345" x2="607" y2="311" stroke="#94a3b8" stroke-width="3"/>
+  <!-- Door handle -->
+  <rect x="310" y="268" width="30" height="6" rx="3" fill="#93c5fd" opacity="0.8"/>
+  <rect x="450" y="268" width="30" height="6" rx="3" fill="#93c5fd" opacity="0.8"/>
+  <!-- Gradient def -->
+  <defs>
+    <radialGradient id="headlight" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="white" stop-opacity="1"/>
+      <stop offset="100%" stop-color="white" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+</svg>
