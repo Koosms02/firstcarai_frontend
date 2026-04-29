@@ -8,12 +8,17 @@ import {
   type Recommendation,
 } from "@/lib/recommendations";
 
-type QuestionType = "text" | "email" | "tel" | "textarea" | "choice";
+type QuestionType = "text" | "email" | "tel" | "textarea" | "choice" | "select" | "multi-select";
 
 interface ChoiceOption {
   value: string;
   label: string;
   key: string;
+}
+
+interface SelectOption {
+  value: string;
+  label: string;
 }
 
 interface Question {
@@ -25,8 +30,96 @@ interface Question {
   placeholder?: string;
   required: boolean;
   options?: ChoiceOption[];
+  selectOptions?: SelectOption[];
   allowOther?: boolean;
 }
+
+const SA_PROVINCES: SelectOption[] = [
+  { value: "Gauteng", label: "Gauteng" },
+  { value: "Western Cape", label: "Western Cape" },
+  { value: "KwaZulu-Natal", label: "KwaZulu-Natal" },
+  { value: "Eastern Cape", label: "Eastern Cape" },
+  { value: "Limpopo", label: "Limpopo" },
+  { value: "Mpumalanga", label: "Mpumalanga" },
+  { value: "North West", label: "North West" },
+  { value: "Free State", label: "Free State" },
+  { value: "Northern Cape", label: "Northern Cape" },
+];
+
+const CAR_BRANDS = [
+  'Alfa Romeo', 'Audi', 'BAIC', 'Bentley', 'BMW', 'BYD', 'Chery',
+  'Chevrolet', 'Citroën', 'Daihatsu', 'Ferrari', 'Fiat', 'Ford',
+  'GWM', 'Haval', 'Honda', 'Hyundai', 'Infiniti', 'Isuzu', 'Jaguar',
+  'Jeep', 'Kia', 'Lamborghini', 'Land Rover', 'Lexus', 'Mahindra',
+  'Maserati', 'Mazda', 'Mercedes-Benz', 'MG', 'Mini', 'Mitsubishi',
+  'Nissan', 'Opel', 'Peugeot', 'Porsche', 'Renault', 'Rolls-Royce',
+  'SEAT', 'Skoda', 'Subaru', 'Suzuki', 'Tata', 'Toyota',
+  'Volkswagen', 'Volvo',
+];
+
+function getBrandLabel(value: string, options?: { value: string; label: string }[]): string {
+  const opt = options?.find((o) => o.value === value);
+  if (opt) return opt.label;
+  const brand = CAR_BRANDS.find((b) => b.toLowerCase() === value.toLowerCase());
+  if (brand) return brand;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+// SA ID validation utilities
+function validateSaId(id: string): string | null {
+  if (!id) return null;
+  if (!/^\d+$/.test(id)) return "ID number must contain only numbers";
+  if (id.length !== 13) return "ID number must be 13 digits";
+
+  const yy = parseInt(id.substring(0, 2), 10);
+  const mm = parseInt(id.substring(2, 4), 10);
+  const dd = parseInt(id.substring(4, 6), 10);
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return "Invalid date in ID number";
+  const currentYY = new Date().getFullYear() % 100;
+  const year = yy <= currentYY ? 2000 + yy : 1900 + yy;
+  const date = new Date(year, mm - 1, dd);
+  if (date.getFullYear() !== year || date.getMonth() !== mm - 1 || date.getDate() !== dd) {
+    return "Invalid date in ID number";
+  }
+
+  // Luhn checksum
+  let sum = 0;
+  let alternate = false;
+  for (let i = id.length - 1; i >= 0; i--) {
+    let n = parseInt(id[i], 10);
+    if (alternate) {
+      n *= 2;
+      if (n > 9) n -= 9;
+    }
+    sum += n;
+    alternate = !alternate;
+  }
+  if (sum % 10 !== 0) return "Invalid ID number";
+
+  return null;
+}
+
+function extractAgeFromId(id: string): number | null {
+  if (!id || id.length < 6) return null;
+  const yy = parseInt(id.substring(0, 2), 10);
+  const mm = parseInt(id.substring(2, 4), 10);
+  const dd = parseInt(id.substring(4, 6), 10);
+  const currentYY = new Date().getFullYear() % 100;
+  const birthYear = yy <= currentYY ? 2000 + yy : 1900 + yy;
+  const today = new Date();
+  const birth = new Date(birthYear, mm - 1, dd);
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+
+const YEARS_LICENSED_NUM: Record<string, number> = {
+  "less-than-1": 0,
+  "1-3": 2,
+  "3-5": 4,
+  "5-plus": 6,
+};
 
 const questions: Question[] = [
   {
@@ -45,10 +138,11 @@ const questions: Question[] = [
   {
     id: "location",
     number: 2,
-    label: "What city are you based in?",
-    type: "text",
-    placeholder: "Cape Town",
+    label: "Which province are you based in?",
+    description: "Select your province from the list.",
+    type: "select",
     required: true,
+    selectOptions: SA_PROVINCES,
   },
   {
     id: "net_salary",
@@ -60,48 +154,81 @@ const questions: Question[] = [
     required: true,
   },
   {
-    id: "credit_score",
+    id: "id_number",
     number: 4,
-    label: "What is your credit score range?",
-    type: "choice",
+    label: "What is your South African ID number?",
+    description: "We use this to determine your credit score securely.",
+    type: "text",
+    placeholder: "e.g. 9001015009087",
     required: true,
-    options: [
-      { value: "below-600", label: "Below 600 (Poor)", key: "A" },
-      { value: "600-699", label: "600 - 699 (Fair)", key: "B" },
-      { value: "700-749", label: "700 - 749 (Good)", key: "C" },
-      { value: "750-plus", label: "750+ (Excellent)", key: "D" },
-    ],
+  },
+  {
+    id: "expenses_groceries",
+    number: 5,
+    label: "How much do you spend on groceries monthly?",
+    type: "text",
+    placeholder: "R 3,000",
+    required: true,
+  },
+  {
+    id: "expenses_accounts",
+    number: 6,
+    label: "How much do you spend on accounts (clothing, etc) monthly?",
+    type: "text",
+    placeholder: "R 1,500",
+    required: true,
+  },
+  {
+    id: "expenses_loans",
+    number: 7,
+    label: "How much do you spend on loans/credit cards monthly?",
+    type: "text",
+    placeholder: "R 2,000",
+    required: true,
+  },
+  {
+    id: "expenses_other",
+    number: 8,
+    label: "Any other monthly expenses?",
+    type: "text",
+    placeholder: "R 500",
+    required: false,
   },
   {
     id: "years_licenced",
-    number: 5,
+    number: 9,
     label: "How long have you been licenced?",
     type: "choice",
     required: true,
     options: [
       { value: "less-than-1", label: "Less than 1 year", key: "A" },
-      { value: "1-3", label: "1 - 3 years", key: "B" },
-      { value: "3-5", label: "3 - 5 years", key: "C" },
+      { value: "1-3", label: "1 – 3 years", key: "B" },
+      { value: "3-5", label: "3 – 5 years", key: "C" },
       { value: "5-plus", label: "5+ years", key: "D" },
     ],
   },
   {
     id: "preferred_brand",
-    number: 6,
-    label: "Which car brand do you prefer?",
-    type: "choice",
+    number: 10,
+    label: "Which car brands do you prefer?",
+    description: "Select one or more brands. This is optional.",
+    type: "multi-select",
     required: false,
-    allowOther: true,
     options: [
       { value: "toyota", label: "Toyota", key: "A" },
       { value: "volkswagen", label: "Volkswagen", key: "B" },
       { value: "hyundai", label: "Hyundai", key: "C" },
       { value: "ford", label: "Ford", key: "D" },
+      { value: "bmw", label: "BMW", key: "E" },
+      { value: "mercedes", label: "Mercedes-Benz", key: "F" },
+      { value: "audi", label: "Audi", key: "G" },
+      { value: "kia", label: "Kia", key: "H" },
+      { value: "nissan", label: "Nissan", key: "I" },
     ],
   },
   {
     id: "car_type",
-    number: 7,
+    number: 11,
     label: "What type of car are you looking for?",
     type: "choice",
     required: true,
@@ -114,7 +241,7 @@ const questions: Question[] = [
   },
   {
     id: "fuel_type",
-    number: 8,
+    number: 12,
     label: "What fuel type do you prefer?",
     type: "choice",
     required: true,
@@ -127,7 +254,7 @@ const questions: Question[] = [
   },
   {
     id: "transmission",
-    number: 9,
+    number: 13,
     label: "Do you prefer manual or automatic?",
     type: "choice",
     required: true,
@@ -141,6 +268,41 @@ const questions: Question[] = [
 type Phase = "visible" | "exiting" | "pre-enter" | "entering";
 type Direction = "forward" | "back";
 
+function parseCurrencyValue(value: string): number {
+  const numeric = value.replace(/[^\d.]/g, "");
+  return numeric ? parseFloat(numeric) : 0;
+}
+
+function validateStep(question: Question, answer: string, answers: Record<string, string>): string {
+  if (question.required && !answer.trim()) {
+    if (question.id === "location") return "Please select your province";
+    if (question.id === "net_salary") return "Salary is required";
+    if (question.id === "id_number") return "Please fill in this field to continue.";
+    return "Please fill in this field to continue.";
+  }
+
+  if (question.id === "net_salary" && answer.trim()) {
+    const val = parseCurrencyValue(answer);
+    if (isNaN(val) || val <= 0) return "Enter a valid monthly salary";
+  }
+
+  if (question.id === "id_number" && answer.trim()) {
+    const err = validateSaId(answer.trim());
+    if (err) return err;
+  }
+
+  if (question.id === "years_licenced" && answer) {
+    const idNumber = answers["id_number"] ?? "";
+    const age = extractAgeFromId(idNumber);
+    const yearsLicensed = YEARS_LICENSED_NUM[answer] ?? 0;
+    if (age !== null && yearsLicensed > age) {
+      return "Years licensed exceeds possible limit";
+    }
+  }
+
+  return "";
+}
+
 export default function FormPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
@@ -153,6 +315,7 @@ export default function FormPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const otherInputRef = useRef<HTMLInputElement>(null);
+  const [brandSearch, setBrandSearch] = useState('');
 
   const question = questions[step];
   const isAnimating = phase !== "visible";
@@ -227,9 +390,10 @@ export default function FormPage() {
     if (isAnimating || isSubmitting) return;
 
     const answer = overrideAnswer ?? answers[question.id] ?? "";
+    const validationError = validateStep(question, answer, answers);
 
-    if (question.required && !answer.trim()) {
-      setError("Please fill in this field to continue.");
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -253,7 +417,7 @@ export default function FormPage() {
         setSubmissionError(
           err instanceof Error
             ? err.message
-            : "Something went wrong while submitting your answers.",
+            : "Something went wrong. Please try again.",
         );
       } finally {
         setIsSubmitting(false);
@@ -289,6 +453,17 @@ export default function FormPage() {
   }
 
   selectChoiceRef.current = selectChoice;
+
+  function toggleMultiSelect(questionId: string, value: string) {
+    setAnswers((prev) => {
+      const current = (prev[questionId] ?? "").split(",").filter(Boolean);
+      const next = current.includes(value)
+        ? current.filter((v) => v !== value)
+        : [...current, value];
+      return { ...prev, [questionId]: next.join(",") };
+    });
+    if (error) setError("");
+  }
 
   function handleInputKeyDown(
     event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -347,6 +522,12 @@ export default function FormPage() {
     }
   }
 
+  const showContinueButton =
+    question.type !== "choice" ||
+    (question.allowOther &&
+      !question.options?.some((o) => o.value === answers[question.id]) &&
+      (answers[question.id] ?? "").trim() !== "");
+
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-white text-gray-900">
       {/* Progress bar */}
@@ -374,7 +555,162 @@ export default function FormPage() {
           )}
 
           <div className="mt-8">
-            {question.type === "choice" && question.options ? (
+            {question.type === "select" && question.selectOptions ? (
+              <div className="flex flex-col gap-3">
+                <select
+                  value={answers[question.id] ?? ""}
+                  onChange={(e) => {
+                    setAnswers((prev) => ({ ...prev, [question.id]: e.target.value }));
+                    if (error) setError("");
+                  }}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-base text-gray-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="">Select your province...</option>
+                  {question.selectOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : question.type === "multi-select" && question.options ? (
+              <div className="flex flex-col gap-4">
+                {/* Selected brand tags */}
+                {(answers[question.id] ?? "").split(",").filter(Boolean).length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {(answers[question.id] ?? "").split(",").filter(Boolean).map((val) => (
+                      <span
+                        key={val}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700"
+                      >
+                        {getBrandLabel(val, question.options)}
+                        <button
+                          type="button"
+                          onClick={() => toggleMultiSelect(question.id, val)}
+                          className="flex h-4 w-4 items-center justify-center rounded-full text-blue-500 hover:bg-blue-200 transition-colors text-xs"
+                          aria-label={`Remove ${getBrandLabel(val, question.options)}`}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Quick-select grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {question.options.map((option) => {
+                    const isSelected = (answers[question.id] ?? "").split(",").filter(Boolean).includes(option.value);
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => toggleMultiSelect(question.id, option.value)}
+                        className={`flex items-center gap-2.5 rounded-lg border px-4 py-3 text-left text-sm font-medium transition-all duration-150 ${
+                          isSelected
+                            ? "border-blue-500 bg-blue-50 text-blue-700"
+                            : "border-gray-200 bg-gray-50 text-gray-700 hover:border-gray-300 hover:bg-gray-100"
+                        }`}
+                      >
+                        <span
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs font-bold transition-colors ${
+                            isSelected
+                              ? "border-blue-500 bg-blue-500 text-white"
+                              : "border-gray-300 text-gray-400"
+                          }`}
+                        >
+                          {isSelected ? "✓" : ""}
+                        </span>
+                        <span>{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Search / custom brand input */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={brandSearch}
+                    onChange={(e) => setBrandSearch(e.target.value)}
+                    onBlur={() => setTimeout(() => setBrandSearch(""), 150)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const trimmed = brandSearch.trim();
+                        if (!trimmed) return;
+                        const match = CAR_BRANDS.find(
+                          (b) => b.toLowerCase() === trimmed.toLowerCase(),
+                        );
+                        const val = (match ?? trimmed).toLowerCase();
+                        if (!(answers[question.id] ?? "").split(",").filter(Boolean).includes(val)) {
+                          toggleMultiSelect(question.id, val);
+                        }
+                        setBrandSearch("");
+                      }
+                      if (e.key === "Escape") setBrandSearch("");
+                    }}
+                    placeholder="Search or type any brand..."
+                    className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+
+                  {brandSearch.trim() && (() => {
+                    const alreadySelected = (answers[question.id] ?? "").split(",").filter(Boolean);
+                    const filtered = CAR_BRANDS.filter(
+                      (b) =>
+                        b.toLowerCase().includes(brandSearch.toLowerCase()) &&
+                        !alreadySelected.includes(b.toLowerCase()),
+                    );
+                    const showCustom =
+                      brandSearch.trim().length > 0 &&
+                      !CAR_BRANDS.some(
+                        (b) => b.toLowerCase() === brandSearch.trim().toLowerCase(),
+                      );
+
+                    if (!filtered.length && !showCustom) return null;
+
+                    return (
+                      <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
+                        {filtered.map((brand) => (
+                          <button
+                            key={brand}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              toggleMultiSelect(question.id, brand.toLowerCase());
+                              setBrandSearch("");
+                            }}
+                            className="flex w-full items-center px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-blue-50 hover:text-blue-700"
+                          >
+                            {brand}
+                          </button>
+                        ))}
+                        {showCustom && (
+                          <button
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              const val = brandSearch.trim().toLowerCase();
+                              if (!alreadySelected.includes(val)) {
+                                toggleMultiSelect(question.id, val);
+                              }
+                              setBrandSearch("");
+                            }}
+                            className="flex w-full items-center gap-2 border-t border-gray-100 px-4 py-2.5 text-left text-sm text-blue-600 transition-colors hover:bg-blue-50"
+                          >
+                            <span className="font-bold">+</span> Add &ldquo;{brandSearch.trim()}&rdquo;
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <p className="text-xs text-gray-400">
+                  Optional — select all that apply, or skip to continue
+                </p>
+              </div>
+            ) : question.type === "choice" && question.options ? (
               <div className="flex flex-col gap-2.5">
                 {question.options.map((option) => {
                   const selected = answers[question.id] === option.value;
@@ -467,6 +803,7 @@ export default function FormPage() {
                 }}
                 onKeyDown={handleInputKeyDown}
                 placeholder={question.placeholder}
+                maxLength={question.id === "id_number" ? 13 : undefined}
                 className="w-full border-b-2 border-gray-300 bg-transparent py-3 text-xl text-gray-900 placeholder:text-gray-400 outline-none transition-colors focus:border-blue-500"
               />
             )}
@@ -490,12 +827,7 @@ export default function FormPage() {
             )}
           </div>
 
-          {(question.type !== "choice" ||
-            (question.allowOther &&
-              !question.options?.some(
-                (option) => option.value === answers[question.id],
-              ) &&
-              (answers[question.id] ?? "").trim() !== "")) && (
+          {(showContinueButton || question.type === "select") && (
             <div className="mt-7 flex items-center gap-4">
               <button
                 onClick={() => void goNext()}

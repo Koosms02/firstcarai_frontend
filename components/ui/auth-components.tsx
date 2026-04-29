@@ -180,11 +180,37 @@ type AnimatedFormProps = {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   googleLogin?: string;
   goTo?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  showTerms?: boolean;
+  isLoading?: boolean;
 };
 
 type Errors = {
   [key: string]: string;
 };
+
+const Spinner = () => (
+  <svg
+    className="animate-spin h-5 w-5 text-current"
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <circle
+      className="opacity-25"
+      cx="12"
+      cy="12"
+      r="10"
+      stroke="currentColor"
+      strokeWidth="4"
+    />
+    <path
+      className="opacity-75"
+      fill="currentColor"
+      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+    />
+  </svg>
+);
 
 const AnimatedForm = memo(function AnimatedForm({
   header,
@@ -197,9 +223,13 @@ const AnimatedForm = memo(function AnimatedForm({
   onSubmit,
   googleLogin,
   goTo,
+  showTerms = false,
+  isLoading = false,
 }: AnimatedFormProps) {
   const [visible, setVisible] = useState<boolean>(false);
   const [errors, setErrors] = useState<Errors>({});
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsError, setTermsError] = useState('');
 
   const toggleVisibility = () => setVisible(!visible);
 
@@ -209,16 +239,20 @@ const AnimatedForm = memo(function AnimatedForm({
       const value = (event.target as HTMLFormElement)[field.label]?.value;
 
       if (field.required && !value) {
-        currentErrors[field.label] = `${field.label} is required`;
-      }
-
-      if (field.type === 'email' && value && !/\S+@\S+\.\S+/.test(value)) {
-        currentErrors[field.label] = 'Invalid email address';
-      }
-
-      if (field.type === 'password' && value && value.length < 6) {
         currentErrors[field.label] =
-          'Password must be at least 6 characters long';
+          field.type === 'email' ? 'Email is required' : 'Password is required';
+      }
+
+      if (field.type === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+        currentErrors[field.label] = 'Please enter a valid email address';
+      }
+
+      if (field.type === 'password' && value) {
+        if (value.length < 8) {
+          currentErrors[field.label] = 'Password must be at least 8 characters';
+        } else if (!/(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^A-Za-z\d])/.test(value)) {
+          currentErrors[field.label] = 'Password must include upper, lower, number and symbol';
+        }
       }
     });
     return currentErrors;
@@ -227,6 +261,12 @@ const AnimatedForm = memo(function AnimatedForm({
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formErrors = validateForm(event);
+
+    if (showTerms && !termsAccepted) {
+      setTermsError('You must accept the terms and conditions to continue.');
+      return;
+    }
+    setTermsError('');
 
     if (Object.keys(formErrors).length === 0) {
       onSubmit(event);
@@ -297,7 +337,7 @@ const AnimatedForm = memo(function AnimatedForm({
             <section key={field.label} className='flex flex-col gap-2'>
               <BoxReveal boxColor='var(--skeleton)' duration={0.3}>
                 <Label htmlFor={field.label}>
-                  {field.label} <span className='text-red-500'>*</span>
+                  {field.label}{field.required && <span className='text-red-500'> *</span>}
                 </Label>
               </BoxReveal>
 
@@ -348,6 +388,32 @@ const AnimatedForm = memo(function AnimatedForm({
           ))}
         </section>
 
+        {showTerms && (
+          <BoxReveal width='100%' boxColor='var(--skeleton)' duration={0.3}>
+            <section className='mb-4'>
+              <label className='flex items-start gap-2 cursor-pointer'>
+                <input
+                  type='checkbox'
+                  checked={termsAccepted}
+                  onChange={(e) => {
+                    setTermsAccepted(e.target.checked);
+                    if (e.target.checked) setTermsError('');
+                  }}
+                  className='mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500'
+                />
+                <span className='text-xs text-neutral-600 dark:text-neutral-300'>
+                  I accept the{' '}
+                  <span className='text-blue-500 underline cursor-pointer'>terms and conditions</span>
+                  {' '}and consent to the processing of my personal information.
+                </span>
+              </label>
+              {termsError && (
+                <p className='mt-1 text-xs text-red-500'>{termsError}</p>
+              )}
+            </section>
+          </BoxReveal>
+        )}
+
         <BoxReveal width='100%' boxColor='var(--skeleton)' duration={0.3}>
           {errorField && (
             <p className='text-red-500 text-sm mb-4'>{errorField}</p>
@@ -361,10 +427,20 @@ const AnimatedForm = memo(function AnimatedForm({
           overflow='visible'
         >
           <button
-            className='bg-gradient-to-br relative group/btn from-zinc-200 dark:from-zinc-900 dark:to-zinc-900 to-zinc-200 block dark:bg-zinc-800 w-full text-black dark:text-white rounded-md h-10 font-medium shadow-[0px_1px_0px_0px_#ffffff40_inset,0px_-1px_0px_0px_#ffffff40_inset] dark:shadow-[0px_1px_0px_0px_var(--zinc-800)_inset,0px_-1px_0px_0px_var(--zinc-800)_inset] outline-hidden hover:cursor-pointer'
+            className='bg-gradient-to-br relative group/btn from-zinc-200 dark:from-zinc-900 dark:to-zinc-900 to-zinc-200 block dark:bg-zinc-800 w-full text-black dark:text-white rounded-md h-10 font-medium shadow-[0px_1px_0px_0px_#ffffff40_inset,0px_-1px_0px_0px_#ffffff40_inset] dark:shadow-[0px_1px_0px_0px_var(--zinc-800)_inset,0px_-1px_0px_0px_var(--zinc-800)_inset] outline-hidden hover:cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed'
             type='submit'
+            disabled={isLoading}
           >
-            {submitButton} &rarr;
+            <span className='flex items-center justify-center gap-2'>
+              {isLoading ? (
+                <>
+                  <Spinner />
+                  <span>{submitButton}</span>
+                </>
+              ) : (
+                <>{submitButton} &rarr;</>
+              )}
+            </span>
             <BottomGradient />
           </button>
         </BoxReveal>

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import Image from 'next/image';
-import { signup } from '@/lib/recommendations';
+import { signup, login } from '@/lib/recommendations';
 import { AnimatedForm } from '@/components/ui/auth-components';
 
 const GOLF_R_URL =
@@ -11,7 +11,8 @@ const GOLF_R_URL =
 
 export default function Home() {
   const router = useRouter();
-  const [fields, setFields] = useState({ name: '', email: '', password: '' });
+  const [mode, setMode] = useState<'signup' | 'login'>('signup');
+  const [fields, setFields] = useState({ email: '', password: '' });
   const [serverError, setServerError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [carImgError, setCarImgError] = useState(false);
@@ -22,17 +23,29 @@ export default function Home() {
     };
   }
 
+  function switchMode(next: 'signup' | 'login') {
+    setMode(next);
+    setServerError('');
+    setFields({ email: '', password: '' });
+  }
+
   async function handleSubmit(_e: React.SyntheticEvent<HTMLFormElement>) {
     setIsSubmitting(true);
     setServerError('');
     try {
-      const user = await signup({
-        email: fields.email.trim(),
-        password: fields.password,
-      });
+      const user =
+        mode === 'signup'
+          ? await signup({ email: fields.email.trim(), password: fields.password })
+          : await login({ email: fields.email.trim(), password: fields.password });
+
       sessionStorage.setItem('user_id', user.id);
       sessionStorage.setItem('user_email', user.email);
-      router.push('/form');
+
+      if (mode === 'login') {
+        router.push('/dashboard');
+      } else {
+        router.push('/form');
+      }
     } catch (err) {
       setServerError(
         err instanceof Error ? err.message : 'Something went wrong. Please try again.'
@@ -42,11 +55,12 @@ export default function Home() {
     }
   }
 
+  const isLogin = mode === 'login';
+
   return (
     <div className="min-h-screen flex">
       {/* Left panel — car background */}
       <div className="hidden lg:flex lg:w-1/2 flex-col items-center justify-center relative overflow-hidden">
-        {/* Full-panel background image */}
         {carImgError ? (
           <div className="absolute inset-0 bg-blue-600">
             <div className="absolute w-[500px] h-[500px] rounded-full bg-blue-500 opacity-40 -bottom-24 -left-24" />
@@ -64,10 +78,8 @@ export default function Home() {
           />
         )}
 
-        {/* Dark overlay so text stays readable */}
         <div className="absolute inset-0 bg-black/50" />
 
-        {/* Branding */}
         <div className="relative z-10 flex flex-col items-center gap-6 px-10 text-center">
           <div className="flex items-center gap-2">
             <svg width="32" height="32" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -91,7 +103,6 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Small trust badges */}
           <div className="flex gap-4 mt-2">
             <div className="bg-white/15 backdrop-blur-sm rounded-xl px-4 py-2 text-center">
               <p className="text-white font-bold text-lg">500+</p>
@@ -109,7 +120,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Right panel — sign-up form */}
+      {/* Right panel — form */}
       <div className="flex-1 flex flex-col items-center justify-center bg-white px-8 py-12">
         {/* Mobile logo */}
         <div className="lg:hidden flex items-center gap-2 mb-8">
@@ -124,16 +135,14 @@ export default function Home() {
         </div>
 
         <AnimatedForm
-          header="Create your account"
-          subHeader="Sign up to get personalised car recommendations."
+          key={mode}
+          header={isLogin ? 'Welcome back' : 'Create your account'}
+          subHeader={
+            isLogin
+              ? 'Sign in to see your car recommendations.'
+              : 'Sign up to get personalised car recommendations.'
+          }
           fields={[
-            {
-              label: 'Full name',
-              required: true,
-              type: 'text',
-              placeholder: 'Jane Dlamini',
-              onChange: handleChange('name'),
-            },
             {
               label: 'Email',
               required: true,
@@ -145,13 +154,19 @@ export default function Home() {
               label: 'Password',
               required: true,
               type: 'password',
-              placeholder: 'At least 8 characters',
+              placeholder: isLogin ? 'Your password' : 'At least 8 characters',
               onChange: handleChange('password'),
             },
           ]}
-          submitButton={isSubmitting ? 'Creating account...' : 'Create account'}
+          submitButton={isLogin ? 'Sign in' : 'Create account'}
+          isLoading={isSubmitting}
+          textVariantButton={
+            isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'
+          }
           errorField={serverError}
           onSubmit={handleSubmit}
+          goTo={() => switchMode(isLogin ? 'signup' : 'login')}
+          showTerms={!isLogin}
         />
       </div>
     </div>

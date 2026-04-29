@@ -31,6 +31,7 @@ type UpsertUserPayload = {
   email: string;
   netSalary: number;
   creditScore: number;
+  idNumber?: string;
   yearsLicensed?: number;
   gender?: string;
   location?: string;
@@ -52,13 +53,6 @@ const API_BASE_URL =
   'http://localhost:3001';
 
 const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
-
-const CREDIT_SCORE_MAP: Record<string, number> = {
-  'below-600': 580,
-  '600-699': 650,
-  '700-749': 720,
-  '750-plus': 770,
-};
 
 const YEARS_LICENSED_MAP: Record<string, number> = {
   'less-than-1': 0,
@@ -128,11 +122,13 @@ const MOCK_RECOMMENDATIONS: Recommendation[] = [
 ];
 
 function parseCurrency(value: string) {
+  if (!value) return 0;
   const numeric = value.replace(/[^\d.]/g, '');
+  if (!numeric) return 0;
   const parsed = Number.parseFloat(numeric);
 
   if (Number.isNaN(parsed)) {
-    throw new Error('Monthly net salary must be a valid number.');
+    throw new Error('Must be a valid number.');
   }
 
   return parsed;
@@ -192,11 +188,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 function buildUpsertUserPayload(
   email: string,
   answers: QuestionnaireAnswers,
+  creditScore: number,
 ): UpsertUserPayload {
   return {
     email,
     netSalary: parseCurrency(answers.net_salary),
-    creditScore: CREDIT_SCORE_MAP[answers.credit_score] ?? 650,
+    creditScore,
+    idNumber: answers.id_number || undefined,
     yearsLicensed: YEARS_LICENSED_MAP[answers.years_licenced],
     gender: answers.gender || undefined,
     location: answers.location || undefined,
@@ -215,7 +213,9 @@ function buildPreferencesPayload(
 }
 
 function getMockRecommendations(answers: QuestionnaireAnswers) {
-  const preferredBrand = answers.preferred_brand?.toLowerCase();
+  const preferredBrands = answers.preferred_brand
+    ? answers.preferred_brand.split(',').map((b) => b.trim().toLowerCase()).filter(Boolean)
+    : [];
   const transmission = answers.transmission?.toLowerCase();
   const fuelType = answers.fuel_type?.toLowerCase();
 
@@ -224,8 +224,10 @@ function getMockRecommendations(answers: QuestionnaireAnswers) {
       let score = recommendation.score;
 
       if (
-        preferredBrand &&
-        recommendation.car.make.toLowerCase().includes(preferredBrand)
+        preferredBrands.length > 0 &&
+        preferredBrands.some((brand) =>
+          recommendation.car.make.toLowerCase().includes(brand),
+        )
       ) {
         score += 0.04;
       }
@@ -264,6 +266,21 @@ export async function signup(payload: SignupPayload): Promise<{ id: string; emai
   return { id: sub, email };
 }
 
+export async function login(payload: SignupPayload): Promise<{ id: string; email: string }> {
+  if (USE_MOCK_DATA) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return { id: 'mock-user-id', email: payload.email };
+  }
+
+  const { access_token } = await request<{ access_token: string }>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+  const { sub, email } = decodeJwtPayload(access_token);
+  return { id: sub, email };
+}
+
 export async function submitQuestionnaire(
   answers: QuestionnaireAnswers,
   _userId: string,
@@ -271,13 +288,50 @@ export async function submitQuestionnaire(
 ) {
   if (USE_MOCK_DATA) {
     await new Promise((resolve) => setTimeout(resolve, 500));
+    
+    // Simulate mock credit score based on user input
+    const income = parseCurrency(answers.net_salary || '0');
+    const totalExpenses = 
+      parseCurrency(answers.expenses_groceries || '0') +
+      parseCurrency(answers.expenses_accounts || '0') +
+      parseCurrency(answers.expenses_loans || '0') +
+      parseCurrency(answers.expenses_other || '0');
+    
+    const dti = income > 0 ? totalExpenses / income : 1;
+    let mockCreditScore = 650;
+    if (dti < 0.2) mockCreditScore = 750;
+    else if (dti < 0.4) mockCreditScore = 700;
+    else if (dti < 0.6) mockCreditScore = 650;
+    else if (dti < 0.8) mockCreditScore = 600;
+    else mockCreditScore = 500;
+
+    const upsertPayload = buildUpsertUserPayload(email, answers, mockCreditScore);
+    console.log("Mock submission payload:", upsertPayload);
+
     return {
       source: 'mock' as const,
       recommendations: getMockRecommendations(answers),
     };
   }
 
-  const upsertPayload = buildUpsertUserPayload(email, answers);
+  // Calculate mock credit score based on user input
+  const creditScoreRes = await request<{ creditScore: number }>('/credit-score/check', {
+    method: 'POST',
+    body: JSON.stringify({
+      idNumber: answers.id_number || '0000000000000',
+      income: parseCurrency(answers.net_salary),
+      expenses: {
+        groceries: parseCurrency(answers.expenses_groceries || '0'),
+        accounts: parseCurrency(answers.expenses_accounts || '0'),
+        loans: parseCurrency(answers.expenses_loans || '0'),
+        other: parseCurrency(answers.expenses_other || '0'),
+      },
+    }),
+  });
+
+  const creditScore = creditScoreRes.creditScore;
+
+  const upsertPayload = buildUpsertUserPayload(email, answers, creditScore);
   const preferencesPayload = buildPreferencesPayload(answers);
 
   const user = await request<CreatedUser>('/users', {
