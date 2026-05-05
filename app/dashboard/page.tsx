@@ -14,6 +14,29 @@ function parseCurrencyValue(value: string): number {
   return numeric ? parseFloat(numeric) : 0;
 }
 
+const BRAND_DISPLAY_NAMES: Record<string, string> = {
+  'bmw': 'BMW',
+  'mercedes': 'Mercedes-Benz',
+  'volkswagen': 'Volkswagen',
+  'toyota': 'Toyota',
+  'hyundai': 'Hyundai',
+  'ford': 'Ford',
+  'audi': 'Audi',
+  'kia': 'Kia',
+  'nissan': 'Nissan',
+};
+
+function getBrandDisplayName(value: string): string {
+  return BRAND_DISPLAY_NAMES[value.toLowerCase()] ?? value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function carMatchesBrand(make: string, brandValue: string): boolean {
+  const makeLower = make.toLowerCase();
+  const brandLower = brandValue.toLowerCase();
+  // Handle "mercedes" matching "mercedes-benz"
+  return makeLower === brandLower || makeLower.includes(brandLower) || brandLower.includes(makeLower);
+}
+
 const FIELD_CONFIG: {
   key: string;
   label: string;
@@ -236,6 +259,13 @@ export default function DashboardPage() {
   const [tripDestination, setTripDestination] = useState('');
   const [showTripModal, setShowTripModal] = useState(false);
 
+  // Preferred car state
+  const [preferredCarId, setPreferredCarIdState] = useState<string | null>(null);
+  const [preferredTripDestination, setPreferredTripDestination] = useState('');
+
+  // Brand filter state
+  const [brandFilter, setBrandFilter] = useState<string>('all');
+
   useEffect(() => {
     const storedId = sessionStorage.getItem('user_id') ?? '';
 
@@ -265,6 +295,9 @@ export default function DashboardPage() {
 
       const rawAnswers = sessionStorage.getItem('form_answers');
       if (rawAnswers) setAnswers(JSON.parse(rawAnswers) as Record<string, string>);
+
+      const savedPreferredId = sessionStorage.getItem('preferred_car_id');
+      if (savedPreferredId) setPreferredCarIdState(savedPreferredId);
     });
   }, [router]);
 
@@ -330,10 +363,17 @@ export default function DashboardPage() {
     });
   }
 
+  function setPreferredCar(id: string | null) {
+    setPreferredCarIdState(id);
+    setPreferredTripDestination('');
+    if (id) sessionStorage.setItem('preferred_car_id', id);
+    else sessionStorage.removeItem('preferred_car_id');
+  }
+
   const compareRecs = recommendations.filter((r) => compareIds.has(r.id));
 
   const tripCar = recommendations.find((r) => r.id === selectedCarId) ?? null;
-  const originCity = PROVINCE_CITY[answers.location ?? ''] ?? null;
+  const originCity = answers.city || PROVINCE_CITY[answers.location ?? ''] || null;
   const tripDistance =
     tripCar && originCity && tripDestination
       ? getTripDistance(originCity, tripDestination)
@@ -342,7 +382,25 @@ export default function DashboardPage() {
   const tripLitres = tripDistance !== null ? (tripDistance / 100) * tripEfficiency : null;
   const tripFuelCost = tripLitres !== null ? Math.round(tripLitres * 22) : null;
 
+  // Preferred car trip calculation
+  const preferredCar = recommendations.find((r) => r.id === preferredCarId) ?? null;
+  const preferredTripDistance =
+    preferredCar && originCity && preferredTripDestination
+      ? getTripDistance(originCity, preferredTripDestination)
+      : null;
+  const preferredTripEfficiency = DEFAULT_FUEL_EFFICIENCY[preferredCar?.car.fuelType ?? 'petrol'] ?? 8;
+  const preferredTripLitres =
+    preferredTripDistance !== null ? (preferredTripDistance / 100) * preferredTripEfficiency : null;
+  const preferredTripFuelCost =
+    preferredTripLitres !== null ? Math.round(preferredTripLitres * 22) : null;
+
   const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
+
+  const selectedBrands = (answers.preferred_brand ?? '').split(',').filter(Boolean);
+  const filteredRecommendations =
+    brandFilter === 'all' || selectedBrands.length === 0
+      ? recommendations
+      : recommendations.filter((r) => carMatchesBrand(r.car.make, brandFilter));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -495,6 +553,43 @@ export default function DashboardPage() {
             </p>
           )}
 
+          {/* Brand filter tabs — only shown when user selected multiple brands */}
+          {selectedBrands.length > 0 && recommendations.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-5">
+              <button
+                onClick={() => setBrandFilter('all')}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  brandFilter === 'all'
+                    ? 'bg-blue-500 text-white'
+                    : 'border border-gray-300 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                All brands
+              </button>
+              {selectedBrands.map((brand) => {
+                const count = recommendations.filter((r) => carMatchesBrand(r.car.make, brand)).length;
+                return (
+                  <button
+                    key={brand}
+                    onClick={() => setBrandFilter(brand)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                      brandFilter === brand
+                        ? 'bg-blue-500 text-white'
+                        : 'border border-gray-300 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {getBrandDisplayName(brand)}
+                    <span className={`text-xs rounded-full px-1.5 py-0.5 font-semibold ${
+                      brandFilter === brand ? 'bg-blue-400 text-white' : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {recommendations.length === 0 ? (
             hasSubmittedForm ? (
               <div className="bg-white rounded-2xl border border-amber-200 bg-amber-50 p-12 flex flex-col items-center text-center gap-4">
@@ -539,24 +634,49 @@ export default function DashboardPage() {
                 </button>
               </div>
             )
+          ) : filteredRecommendations.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-gray-200 p-10 flex flex-col items-center text-center gap-3">
+              <p className="font-semibold text-gray-900">No cars found for {getBrandDisplayName(brandFilter)}</p>
+              <p className="text-sm text-gray-500">
+                The AI did not return any {getBrandDisplayName(brandFilter)} vehicles in your affordability range.
+              </p>
+              <button
+                onClick={() => setBrandFilter('all')}
+                className="mt-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Show all brands
+              </button>
+            </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-3">
-              {recommendations.map((rec, idx) => {
+              {filteredRecommendations.map((rec, idx) => {
                 const affordPct = budget > 0
                   ? Math.max(0, Math.min(100, (1 - rec.estimatedMonthlyCost / budget) * 100))
                   : null;
                 const isSelected = compareIds.has(rec.id);
+                const isPreferred = preferredCarId === rec.id;
 
                 return (
                   <article
                     key={rec.id}
                     className={`bg-white rounded-2xl border p-5 transition-all ${
-                      isSelected ? 'border-blue-400 ring-2 ring-blue-100' : 'border-gray-200'
+                      isPreferred
+                        ? 'border-amber-400 ring-2 ring-amber-100'
+                        : isSelected
+                        ? 'border-blue-400 ring-2 ring-blue-100'
+                        : 'border-gray-200'
                     }`}
                   >
-                    {/* Rank + compare toggle */}
+                    {/* Rank + badges row */}
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold text-gray-400">#{idx + 1}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-gray-400">#{idx + 1}</span>
+                        {isPreferred && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                            ★ Preferred
+                          </span>
+                        )}
+                      </div>
                       <button
                         onClick={() => toggleCompare(rec.id)}
                         className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
@@ -629,22 +749,139 @@ export default function DashboardPage() {
                       </div>
                     </dl>
 
-                    <button
-                      onClick={() => {
-                        setSelectedCarId(rec.id);
-                        setTripDestination('');
-                        setShowTripModal(true);
-                      }}
-                      className="mt-4 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-600 transition-colors hover:bg-blue-100"
-                    >
-                      Calculate trip fuel cost →
-                    </button>
+                    <div className="mt-4 flex flex-col gap-2">
+                      <button
+                        onClick={() => {
+                          if (preferredCarId === rec.id) {
+                            setPreferredCar(null);
+                          } else {
+                            setPreferredCar(rec.id);
+                          }
+                        }}
+                        className={`w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          preferredCarId === rec.id
+                            ? 'border border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                            : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        {preferredCarId === rec.id ? '★ My preferred car' : '☆ Set as preferred car'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedCarId(rec.id);
+                          setTripDestination('');
+                          setShowTripModal(true);
+                        }}
+                        className="w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-600 transition-colors hover:bg-blue-100"
+                      >
+                        Calculate trip fuel cost →
+                      </button>
+                    </div>
                   </article>
                 );
               })}
             </div>
           )}
         </section>
+
+        {/* Preferred car + trip planner */}
+        {preferredCar && (
+          <section className="bg-white rounded-2xl border border-amber-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Your preferred car</h2>
+                <p className="text-sm text-gray-500 mt-0.5">Plan your trips and estimate fuel costs for this car.</p>
+              </div>
+              <button
+                onClick={() => setPreferredCar(null)}
+                className="text-xs text-gray-400 underline underline-offset-2 hover:text-gray-600 transition-colors"
+              >
+                Clear selection
+              </button>
+            </div>
+
+            {/* Car summary */}
+            <div className="flex items-center gap-4 rounded-xl bg-amber-50 border border-amber-100 px-5 py-4 mb-6">
+              <div className="h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold text-sm select-none">
+                {preferredCar.car.make.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-gray-900 text-base">
+                  {preferredCar.car.make} {preferredCar.car.model}
+                </p>
+                <p className="text-sm text-gray-500">
+                  {preferredCar.car.year ?? 'Year n/a'} · {preferredCar.car.fuelType ?? 'n/a'} · {preferredCar.car.transmission ?? 'n/a'} · {preferredTripEfficiency} L/100km
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-gray-400">Match score</p>
+                <p className="text-sm font-bold text-blue-600">{(preferredCar.score * 100).toFixed(0)}%</p>
+              </div>
+            </div>
+
+            {/* Trip planner */}
+            <div className="flex flex-col gap-5">
+              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Trip fuel calculator</h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1.5">From</p>
+                  {originCity ? (
+                    <p className="text-sm font-medium text-gray-800 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+                      {originCity}{' '}
+                      <span className="text-gray-400 font-normal">({answers.location})</span>
+                    </p>
+                  ) : (
+                    <p className="text-sm text-amber-600 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+                      City not set — complete the questionnaire first.
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1.5">To</p>
+                  <select
+                    value={preferredTripDestination}
+                    onChange={(e) => setPreferredTripDestination(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="">Select destination city...</option>
+                    {TRIP_DESTINATIONS.filter((c) => c !== originCity).map((city) => (
+                      <option key={city} value={city}>{city}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {preferredTripDistance !== null && (
+                <div className="rounded-xl bg-blue-50 border border-blue-100 px-5 py-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">Distance (one-way)</p>
+                    <p className="text-base font-semibold text-gray-900">{preferredTripDistance.toLocaleString()} km</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">Fuel needed</p>
+                    <p className="text-base font-semibold text-gray-900">{preferredTripLitres!.toFixed(1)} L</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">Fuel price</p>
+                    <p className="text-base font-semibold text-gray-900">R22 / L</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">Estimated cost</p>
+                    <p className="text-lg font-bold text-blue-600">{formatCurrency(preferredTripFuelCost!)}</p>
+                  </div>
+                </div>
+              )}
+
+              {preferredTripDestination && preferredTripDistance === null && (
+                <p className="text-sm text-amber-600 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                  Distance data not available for this route.
+                </p>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Danger zone */}
         <section className="bg-white rounded-2xl border border-red-100 p-6">

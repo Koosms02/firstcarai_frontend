@@ -46,6 +46,85 @@ const SA_PROVINCES: SelectOption[] = [
   { value: "Northern Cape", label: "Northern Cape" },
 ];
 
+const SA_PROVINCE_CITIES: Record<string, SelectOption[]> = {
+  Gauteng: [
+    { value: "Johannesburg", label: "Johannesburg" },
+    { value: "Pretoria", label: "Pretoria" },
+    { value: "Centurion", label: "Centurion" },
+    { value: "Sandton", label: "Sandton" },
+    { value: "Randburg", label: "Randburg" },
+    { value: "Roodepoort", label: "Roodepoort" },
+    { value: "Soweto", label: "Soweto" },
+    { value: "Benoni", label: "Benoni" },
+    { value: "Boksburg", label: "Boksburg" },
+    { value: "Ekurhuleni", label: "Ekurhuleni (East Rand)" },
+  ],
+  "Western Cape": [
+    { value: "Cape Town", label: "Cape Town" },
+    { value: "Bellville", label: "Bellville" },
+    { value: "Stellenbosch", label: "Stellenbosch" },
+    { value: "Paarl", label: "Paarl" },
+    { value: "Somerset West", label: "Somerset West" },
+    { value: "Worcester", label: "Worcester" },
+    { value: "George", label: "George" },
+    { value: "Knysna", label: "Knysna" },
+    { value: "Mossel Bay", label: "Mossel Bay" },
+  ],
+  "KwaZulu-Natal": [
+    { value: "Durban", label: "Durban" },
+    { value: "Pietermaritzburg", label: "Pietermaritzburg" },
+    { value: "Richards Bay", label: "Richards Bay" },
+    { value: "Newcastle", label: "Newcastle" },
+    { value: "Pinetown", label: "Pinetown" },
+    { value: "Empangeni", label: "Empangeni" },
+    { value: "Ladysmith", label: "Ladysmith" },
+    { value: "Amanzimtoti", label: "Amanzimtoti" },
+  ],
+  "Eastern Cape": [
+    { value: "Gqeberha", label: "Gqeberha (Port Elizabeth)" },
+    { value: "East London", label: "East London" },
+    { value: "Mthatha", label: "Mthatha" },
+    { value: "Queenstown", label: "Queenstown" },
+    { value: "Makhanda", label: "Makhanda (Grahamstown)" },
+  ],
+  Limpopo: [
+    { value: "Polokwane", label: "Polokwane" },
+    { value: "Tzaneen", label: "Tzaneen" },
+    { value: "Phalaborwa", label: "Phalaborwa" },
+    { value: "Louis Trichardt", label: "Louis Trichardt" },
+    { value: "Mokopane", label: "Mokopane" },
+    { value: "Bela-Bela", label: "Bela-Bela" },
+  ],
+  Mpumalanga: [
+    { value: "Nelspruit", label: "Nelspruit (Mbombela)" },
+    { value: "Witbank", label: "Witbank (eMalahleni)" },
+    { value: "Secunda", label: "Secunda" },
+    { value: "Middelburg", label: "Middelburg" },
+    { value: "Barberton", label: "Barberton" },
+  ],
+  "North West": [
+    { value: "Mahikeng", label: "Mahikeng (Mafikeng)" },
+    { value: "Rustenburg", label: "Rustenburg" },
+    { value: "Klerksdorp", label: "Klerksdorp" },
+    { value: "Potchefstroom", label: "Potchefstroom" },
+    { value: "Brits", label: "Brits" },
+  ],
+  "Free State": [
+    { value: "Bloemfontein", label: "Bloemfontein" },
+    { value: "Welkom", label: "Welkom" },
+    { value: "Bethlehem", label: "Bethlehem" },
+    { value: "Kroonstad", label: "Kroonstad" },
+    { value: "Phuthaditjhaba", label: "Phuthaditjhaba" },
+  ],
+  "Northern Cape": [
+    { value: "Kimberley", label: "Kimberley" },
+    { value: "Upington", label: "Upington" },
+    { value: "Springbok", label: "Springbok" },
+    { value: "De Aar", label: "De Aar" },
+    { value: "Kuruman", label: "Kuruman" },
+  ],
+};
+
 const CAR_BRANDS = [
   'Alfa Romeo', 'Audi', 'BAIC', 'Bentley', 'BMW', 'BYD', 'Chery',
   'Chevrolet', 'Citroën', 'Daihatsu', 'Ferrari', 'Fiat', 'Ford',
@@ -145,8 +224,17 @@ const questions: Question[] = [
     selectOptions: SA_PROVINCES,
   },
   {
-    id: "net_salary",
+    id: "city",
     number: 3,
+    label: "Which city are you in?",
+    description: "Select your city within the selected province.",
+    type: "select",
+    required: true,
+    selectOptions: [],
+  },
+  {
+    id: "net_salary",
+    number: 4,
     label: "What is your monthly net salary?",
     description: "This helps us recommend cars within your affordability range.",
     type: "text",
@@ -155,7 +243,7 @@ const questions: Question[] = [
   },
   {
     id: "id_number",
-    number: 4,
+    number: 5,
     label: "What is your South African ID number?",
     description: "We use this to determine your credit score securely.",
     type: "text",
@@ -164,7 +252,7 @@ const questions: Question[] = [
   },
   {
     id: "expenses_groceries",
-    number: 5,
+    number: 6,
     label: "How much do you spend on groceries monthly?",
     type: "text",
     placeholder: "R 3,000",
@@ -172,7 +260,7 @@ const questions: Question[] = [
   },
   {
     id: "expenses_accounts",
-    number: 6,
+    number: 7,
     label: "How much do you spend on accounts (clothing, etc) monthly?",
     type: "text",
     placeholder: "R 1,500",
@@ -180,7 +268,7 @@ const questions: Question[] = [
   },
   {
     id: "expenses_loans",
-    number: 7,
+    number: 8,
     label: "How much do you spend on loans/credit cards monthly?",
     type: "text",
     placeholder: "R 2,000",
@@ -188,7 +276,7 @@ const questions: Question[] = [
   },
   {
     id: "expenses_other",
-    number: 8,
+    number: 9,
     label: "Any other monthly expenses?",
     type: "text",
     placeholder: "R 500",
@@ -196,7 +284,7 @@ const questions: Question[] = [
   },
   {
     id: "years_licenced",
-    number: 9,
+    number: 10,
     label: "How long have you been licenced?",
     type: "choice",
     required: true,
@@ -209,7 +297,7 @@ const questions: Question[] = [
   },
   {
     id: "preferred_brand",
-    number: 10,
+    number: 11,
     label: "Which car brands do you prefer?",
     description: "Select one or more brands. This is optional.",
     type: "multi-select",
@@ -228,7 +316,7 @@ const questions: Question[] = [
   },
   {
     id: "car_type",
-    number: 11,
+    number: 12,
     label: "What type of car are you looking for?",
     type: "choice",
     required: true,
@@ -241,7 +329,7 @@ const questions: Question[] = [
   },
   {
     id: "fuel_type",
-    number: 12,
+    number: 13,
     label: "What fuel type do you prefer?",
     type: "choice",
     required: true,
@@ -254,7 +342,7 @@ const questions: Question[] = [
   },
   {
     id: "transmission",
-    number: 13,
+    number: 14,
     label: "Do you prefer manual or automatic?",
     type: "choice",
     required: true,
@@ -276,6 +364,7 @@ function parseCurrencyValue(value: string): number {
 function validateStep(question: Question, answer: string, answers: Record<string, string>): string {
   if (question.required && !answer.trim()) {
     if (question.id === "location") return "Please select your province";
+    if (question.id === "city") return "Please select your city";
     if (question.id === "net_salary") return "Salary is required";
     if (question.id === "id_number") return "Please fill in this field to continue.";
     return "Please fill in this field to continue.";
@@ -367,8 +456,44 @@ export default function FormPage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [question, isAnimating]);
 
+  // Stamp the initial history entry so the browser back button has a state to pop to
+  useEffect(() => {
+    window.history.replaceState({ formStep: 0 }, "");
+  }, []);
+
+  // Handle browser back button — pop state triggers backward animation
+  useEffect(() => {
+    function onPopState(event: PopStateEvent) {
+      const targetStep = typeof event.state?.formStep === "number" ? event.state.formStep : null;
+      if (targetStep === null || isAnimating || isSubmitting) return;
+
+      setError("");
+      setDirection("back");
+      setPhase("exiting");
+
+      setTimeout(() => {
+        setStep(targetStep);
+        setPhase("pre-enter");
+
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setPhase("entering");
+            setTimeout(() => setPhase("visible"), 420);
+          });
+        });
+      }, 260);
+    }
+
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [isAnimating, isSubmitting]);
+
   function animateTo(nextStep: number, dir: Direction) {
     if (isAnimating) return;
+
+    if (dir === "forward") {
+      window.history.pushState({ formStep: nextStep }, "");
+    }
 
     setDirection(dir);
     setPhase("exiting");
@@ -431,9 +556,8 @@ export default function FormPage() {
 
   function goBack() {
     if (isAnimating || isSubmitting || step === 0) return;
-
     setError("");
-    animateTo(step - 1, "back");
+    window.history.back();
   }
 
   function selectChoice(value: string) {
@@ -555,18 +679,33 @@ export default function FormPage() {
           )}
 
           <div className="mt-8">
-            {question.type === "select" && question.selectOptions ? (
+            {question.type === "select" ? (
               <div className="flex flex-col gap-3">
+                {question.id === "city" && !answers.location && (
+                  <p className="text-sm text-amber-600">Please go back and select your province first.</p>
+                )}
                 <select
                   value={answers[question.id] ?? ""}
                   onChange={(e) => {
-                    setAnswers((prev) => ({ ...prev, [question.id]: e.target.value }));
+                    const val = e.target.value;
+                    setAnswers((prev) => {
+                      const next = { ...prev, [question.id]: val };
+                      // clear city if province changes
+                      if (question.id === "location") next.city = "";
+                      return next;
+                    });
                     if (error) setError("");
                   }}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-base text-gray-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  disabled={question.id === "city" && !answers.location}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-base text-gray-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <option value="">Select your province...</option>
-                  {question.selectOptions.map((opt) => (
+                  <option value="">
+                    {question.id === "city" ? "Select your city..." : "Select your province..."}
+                  </option>
+                  {(question.id === "city"
+                    ? SA_PROVINCE_CITIES[answers.location ?? ""] ?? []
+                    : question.selectOptions ?? []
+                  ).map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
