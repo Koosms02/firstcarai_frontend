@@ -610,8 +610,8 @@ export default function FormPage() {
     setSubmissionError("");
     setIsSubmitting(true);
     try {
-      const userId = sessionStorage.getItem("user_id") ?? "";
-      const email = sessionStorage.getItem("user_email") ?? "";
+      const userId = sessionStorage.getItem("user_id") ?? undefined;
+      const email = sessionStorage.getItem("user_email") ?? undefined;
       const result = await submitQuestionnaire(answers, userId, email);
       sessionStorage.setItem("recommendations", JSON.stringify(result.recommendations));
       sessionStorage.setItem("result_source", result.source);

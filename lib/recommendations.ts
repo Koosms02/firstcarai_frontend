@@ -290,8 +290,8 @@ export async function login(payload: SignupPayload): Promise<{ id: string; email
 
 export async function submitQuestionnaire(
   answers: QuestionnaireAnswers,
-  _userId: string,
-  email: string,
+  userId?: string,
+  email?: string,
 ) {
   if (USE_MOCK_DATA) {
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -312,8 +312,10 @@ export async function submitQuestionnaire(
     else if (dti < 0.8) mockCreditScore = 600;
     else mockCreditScore = 500;
 
-    const upsertPayload = buildUpsertUserPayload(email, answers, mockCreditScore);
-    console.log("Mock submission payload:", upsertPayload);
+    if (email) {
+      const upsertPayload = buildUpsertUserPayload(email, answers, mockCreditScore);
+      console.log("Mock submission payload:", upsertPayload);
+    }
 
     return {
       source: 'mock' as const,
@@ -338,19 +340,36 @@ export async function submitQuestionnaire(
   });
 
   const creditScore = creditScoreRes.creditScore;
+  let finalUserId = userId;
 
-  const upsertPayload = buildUpsertUserPayload(email, answers, creditScore);
-  const preferencesPayload = buildPreferencesPayload(answers);
+  if (email) {
+    const upsertPayload = buildUpsertUserPayload(email, answers, creditScore);
+    const preferencesPayload = buildPreferencesPayload(answers);
 
-  const user = await request<CreatedUser>('/users', {
-    method: 'POST',
-    body: JSON.stringify(upsertPayload),
-  });
+    const user = await request<CreatedUser>('/users', {
+      method: 'POST',
+      body: JSON.stringify(upsertPayload),
+    });
 
-  await request(`/users/${user.id}/preferences`, {
-    method: 'POST',
-    body: JSON.stringify(preferencesPayload),
-  });
+    finalUserId = user.id;
+
+    await request(`/users/${user.id}/preferences`, {
+      method: 'POST',
+      body: JSON.stringify(preferencesPayload),
+    });
+  }
+
+  // Fetch recommendations
+  const generatePayload: Record<string, any> = {};
+  if (finalUserId) {
+    generatePayload.userId = finalUserId;
+  } else {
+    generatePayload.netSalary = parseCurrency(answers.net_salary);
+    generatePayload.creditScore = creditScore;
+    generatePayload.location = answers.location;
+    generatePayload.idNumber = answers.id_number;
+    generatePayload.preferences = buildPreferencesPayload(answers);
+  }
 
   const recommendations = await request<
     Array<{
@@ -365,7 +384,7 @@ export async function submitQuestionnaire(
     }>
   >('/recommendations/generate', {
     method: 'POST',
-    body: JSON.stringify({ userId: user.id }),
+    body: JSON.stringify(generatePayload),
   });
 
   return {

@@ -281,43 +281,53 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const storedId = sessionStorage.getItem('user_id') ?? '';
-
-    if (!storedId) {
+    const rawAnswers = sessionStorage.getItem('form_answers');
+    
+    // If no user is logged in and no guest answers exist, go home
+    if (!storedId && !rawAnswers) {
       router.replace('/');
       return;
     }
 
-    getUser(storedId).then((user) => {
-      // In mock mode getUser always returns null — skip the guard.
-      // In real API mode, null means no profile in DB → send back to home.
-      if (!user && !isUsingMockData()) {
-        sessionStorage.clear();
-        router.replace('/');
-        return;
-      }
+    if (storedId) {
+      getUser(storedId).then((user) => {
+        // In mock mode getUser always returns null — skip the guard.
+        // In real API mode, null means no profile in DB → send back to home.
+        if (!user && !isUsingMockData()) {
+          sessionStorage.clear();
+          router.replace('/');
+          return;
+        }
 
-      setEmail(sessionStorage.getItem('user_email') ?? '');
-      setUserId(storedId);
-
-      const raw = sessionStorage.getItem('recommendations');
-      if (raw) setRecommendations(JSON.parse(raw) as Recommendation[]);
-
-      const src = sessionStorage.getItem('result_source');
-      if (src === 'api' || src === 'mock') {
-        setResultSource(src);
-        setHasSubmittedForm(true);
-      }
-
-      const rawAnswers = sessionStorage.getItem('form_answers');
-      if (rawAnswers) setAnswers(JSON.parse(rawAnswers) as Record<string, string>);
-
-      const savedPreferredId = sessionStorage.getItem('preferred_car_id');
-      if (savedPreferredId) setPreferredCarIdState(savedPreferredId);
-
-      const savedCreditScore = sessionStorage.getItem('credit_score');
-      if (savedCreditScore) setCreditScore(Number(savedCreditScore));
-    });
+        setEmail(sessionStorage.getItem('user_email') ?? '');
+        setUserId(storedId);
+        loadDataFromStorage();
+      });
+    } else {
+      // Guest user mode
+      loadDataFromStorage();
+    }
   }, [router]);
+
+  function loadDataFromStorage() {
+    const raw = sessionStorage.getItem('recommendations');
+    if (raw) setRecommendations(JSON.parse(raw) as Recommendation[]);
+
+    const src = sessionStorage.getItem('result_source');
+    if (src === 'api' || src === 'mock') {
+      setResultSource(src);
+      setHasSubmittedForm(true);
+    }
+
+    const rawAnswers = sessionStorage.getItem('form_answers');
+    if (rawAnswers) setAnswers(JSON.parse(rawAnswers) as Record<string, string>);
+
+    const savedPreferredId = sessionStorage.getItem('preferred_car_id');
+    if (savedPreferredId) setPreferredCarIdState(savedPreferredId);
+
+    const savedCreditScore = sessionStorage.getItem('credit_score');
+    if (savedCreditScore) setCreditScore(Number(savedCreditScore));
+  }
 
   const budget = parseCurrencyValue(answers.net_salary ?? '') * 0.20;
 
@@ -435,7 +445,17 @@ export default function DashboardPage() {
           <span className="text-lg font-bold text-gray-900">FirstCar</span>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-500">{email}</span>
+          <span className="text-sm text-gray-500">{email || 'Guest User'}</span>
+          {!userId && (
+            <button
+              onClick={() => {
+                router.push('/');
+              }}
+              className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+            >
+              Sign Up to Save
+            </button>
+          )}
           <button
             onClick={() => {
               sessionStorage.clear();
@@ -446,7 +466,7 @@ export default function DashboardPage() {
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M6 2H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3M10 11l3-3-3-3M13 8H6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            Sign out
+            {userId ? 'Sign out' : 'Exit'}
           </button>
         </div>
       </header>

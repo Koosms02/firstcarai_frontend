@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import Image from 'next/image';
-import { signup, login, getUser, getUserRecommendations, generateRecommendations, forgotPassword, resetPassword } from '@/lib/recommendations';
+import { signup, login, getUser, getUserRecommendations, generateRecommendations, forgotPassword, resetPassword, submitQuestionnaire } from '@/lib/recommendations';
 import { AnimatedForm } from '@/components/ui/auth-components';
 
 const GOLF_R_URL =
@@ -97,9 +97,28 @@ export default function Home() {
             sessionStorage.setItem('recommendations', JSON.stringify(recs));
             sessionStorage.setItem('result_source', 'api');
           }
+          
+          router.push('/dashboard');
+          return;
+        } else {
+          // No profile in DB. If they have local guest answers, persist them now.
+          const rawAnswers = sessionStorage.getItem('form_answers');
+          if (rawAnswers) {
+            const answers = JSON.parse(rawAnswers);
+            const result = await submitQuestionnaire(answers, user.id, user.email);
+            
+            sessionStorage.setItem('recommendations', JSON.stringify(result.recommendations));
+            sessionStorage.setItem('result_source', result.source);
+            if (result.creditScore) {
+              sessionStorage.setItem('credit_score', String(result.creditScore));
+            }
+            
+            router.push('/dashboard');
+            return;
+          }
         }
 
-        router.push(hasCompletedForm ? '/dashboard' : '/form');
+        router.push('/form');
         return;
       }
     } catch (err) {
@@ -335,6 +354,16 @@ export default function Home() {
               goTo={() => switchMode(isLogin ? 'signup' : 'login')}
               showTerms={!isLogin}
             />
+
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={() => router.push('/form')}
+                className="text-sm font-medium text-gray-500 hover:text-gray-800 underline decoration-gray-300 underline-offset-4 transition-colors"
+              >
+                Continue as guest
+              </button>
+            </div>
 
             {isLogin && (
               <div className="mt-3 text-center">
