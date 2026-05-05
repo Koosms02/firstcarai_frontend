@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { deleteUser, getUser, submitQuestionnaire, type Recommendation } from '@/lib/recommendations';
+import { deleteUser, getUser, isUsingMockData, submitQuestionnaire, type Recommendation } from '@/lib/recommendations';
 
 function formatCurrency(value: number | null) {
   if (value === null) return 'N/A';
@@ -43,6 +43,8 @@ const FIELD_CONFIG: {
   type: 'text' | 'choice';
   options?: { value: string; label: string }[];
 }[] = [
+  { key: 'first_name', label: 'First name', type: 'text' },
+  { key: 'last_name', label: 'Last name', type: 'text' },
   {
     key: 'gender',
     label: 'Gender',
@@ -164,6 +166,14 @@ function downloadReport(recommendations: Recommendation[], answers: Record<strin
   URL.revokeObjectURL(url);
 }
 
+function getCreditScoreRating(score: number): { label: string; color: string; bg: string; bar: string } {
+  if (score >= 750) return { label: 'Excellent', color: 'text-green-700', bg: 'bg-green-50 border-green-200', bar: 'bg-green-500' };
+  if (score >= 700) return { label: 'Very Good', color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200', bar: 'bg-blue-500' };
+  if (score >= 650) return { label: 'Good', color: 'text-teal-700', bg: 'bg-teal-50 border-teal-200', bar: 'bg-teal-500' };
+  if (score >= 600) return { label: 'Fair', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200', bar: 'bg-amber-400' };
+  return { label: 'Poor', color: 'text-red-700', bg: 'bg-red-50 border-red-200', bar: 'bg-red-500' };
+}
+
 const PROVINCE_CITY: Record<string, string> = {
   Gauteng: 'Pretoria',
   'Western Cape': 'Cape Town',
@@ -263,6 +273,9 @@ export default function DashboardPage() {
   const [preferredCarId, setPreferredCarIdState] = useState<string | null>(null);
   const [preferredTripDestination, setPreferredTripDestination] = useState('');
 
+  // Credit score
+  const [creditScore, setCreditScore] = useState<number | null>(null);
+
   // Brand filter state
   const [brandFilter, setBrandFilter] = useState<string>('all');
 
@@ -275,7 +288,9 @@ export default function DashboardPage() {
     }
 
     getUser(storedId).then((user) => {
-      if (!user) {
+      // In mock mode getUser always returns null — skip the guard.
+      // In real API mode, null means no profile in DB → send back to home.
+      if (!user && !isUsingMockData()) {
         sessionStorage.clear();
         router.replace('/');
         return;
@@ -298,6 +313,9 @@ export default function DashboardPage() {
 
       const savedPreferredId = sessionStorage.getItem('preferred_car_id');
       if (savedPreferredId) setPreferredCarIdState(savedPreferredId);
+
+      const savedCreditScore = sessionStorage.getItem('credit_score');
+      if (savedCreditScore) setCreditScore(Number(savedCreditScore));
     });
   }, [router]);
 
@@ -455,18 +473,46 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-100">
-            <div className="h-14 w-14 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xl font-bold select-none">
-              {email ? email[0].toUpperCase() : '?'}
+          <div className="flex items-start gap-4 mb-6 pb-6 border-b border-gray-100">
+            {/* Avatar */}
+            <div className="h-14 w-14 shrink-0 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xl font-bold select-none">
+              {answers.first_name
+                ? answers.first_name[0].toUpperCase()
+                : email
+                ? email[0].toUpperCase()
+                : '?'}
             </div>
-            <div>
-              <p className="font-medium text-gray-900">{email || '—'}</p>
+
+            {/* Name + email + budget */}
+            <div className="flex-1 min-w-0">
+              {(answers.first_name || answers.last_name) && (
+                <p className="text-lg font-semibold text-gray-900 leading-tight">
+                  {[answers.first_name, answers.last_name].filter(Boolean).join(' ')}
+                </p>
+              )}
+              <p className="text-sm text-gray-500">{email || '—'}</p>
               {budget > 0 && (
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="text-xs text-gray-400 mt-0.5">
                   Monthly budget (20%): <span className="font-semibold text-blue-600">{formatCurrency(budget)}</span>
                 </p>
               )}
             </div>
+
+            {/* Credit score badge */}
+            {creditScore !== null && (() => {
+              const rating = getCreditScoreRating(creditScore);
+              const pct = Math.min(100, Math.max(0, ((creditScore - 300) / (850 - 300)) * 100));
+              return (
+                <div className={`shrink-0 rounded-xl border px-4 py-3 text-center min-w-[110px] ${rating.bg}`}>
+                  <p className="text-xs text-gray-500 mb-1">Credit Score</p>
+                  <p className={`text-2xl font-bold ${rating.color}`}>{creditScore}</p>
+                  <p className={`text-xs font-semibold mt-0.5 ${rating.color}`}>{rating.label}</p>
+                  <div className="mt-2 h-1.5 w-full rounded-full bg-gray-200">
+                    <div className={`h-1.5 rounded-full ${rating.bar}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {saveError && (

@@ -202,8 +202,24 @@ const YEARS_LICENSED_NUM: Record<string, number> = {
 
 const questions: Question[] = [
   {
-    id: "gender",
+    id: "first_name",
     number: 1,
+    label: "What's your first name?",
+    type: "text",
+    placeholder: "e.g. Thabo",
+    required: true,
+  },
+  {
+    id: "last_name",
+    number: 2,
+    label: "And your last name?",
+    type: "text",
+    placeholder: "e.g. Nkosi",
+    required: true,
+  },
+  {
+    id: "gender",
+    number: 3,
     label: "What's your gender?",
     type: "choice",
     required: true,
@@ -216,7 +232,7 @@ const questions: Question[] = [
   },
   {
     id: "location",
-    number: 2,
+    number: 4,
     label: "Which province are you based in?",
     description: "Select your province from the list.",
     type: "select",
@@ -225,7 +241,7 @@ const questions: Question[] = [
   },
   {
     id: "city",
-    number: 3,
+    number: 5,
     label: "Which city are you in?",
     description: "Select your city within the selected province.",
     type: "select",
@@ -234,7 +250,7 @@ const questions: Question[] = [
   },
   {
     id: "net_salary",
-    number: 4,
+    number: 6,
     label: "What is your monthly net salary?",
     description: "This helps us recommend cars within your affordability range.",
     type: "text",
@@ -243,7 +259,7 @@ const questions: Question[] = [
   },
   {
     id: "id_number",
-    number: 5,
+    number: 7,
     label: "What is your South African ID number?",
     description: "We use this to determine your credit score securely.",
     type: "text",
@@ -252,7 +268,7 @@ const questions: Question[] = [
   },
   {
     id: "expenses_groceries",
-    number: 6,
+    number: 8,
     label: "How much do you spend on groceries monthly?",
     type: "text",
     placeholder: "R 3,000",
@@ -260,7 +276,7 @@ const questions: Question[] = [
   },
   {
     id: "expenses_accounts",
-    number: 7,
+    number: 9,
     label: "How much do you spend on accounts (clothing, etc) monthly?",
     type: "text",
     placeholder: "R 1,500",
@@ -268,7 +284,7 @@ const questions: Question[] = [
   },
   {
     id: "expenses_loans",
-    number: 8,
+    number: 10,
     label: "How much do you spend on loans/credit cards monthly?",
     type: "text",
     placeholder: "R 2,000",
@@ -276,7 +292,7 @@ const questions: Question[] = [
   },
   {
     id: "expenses_other",
-    number: 9,
+    number: 11,
     label: "Any other monthly expenses?",
     type: "text",
     placeholder: "R 500",
@@ -284,7 +300,7 @@ const questions: Question[] = [
   },
   {
     id: "years_licenced",
-    number: 10,
+    number: 12,
     label: "How long have you been licenced?",
     type: "choice",
     required: true,
@@ -297,7 +313,7 @@ const questions: Question[] = [
   },
   {
     id: "preferred_brand",
-    number: 11,
+    number: 13,
     label: "Which car brands do you prefer?",
     description: "Select one or more brands. This is optional.",
     type: "multi-select",
@@ -316,7 +332,7 @@ const questions: Question[] = [
   },
   {
     id: "car_type",
-    number: 12,
+    number: 14,
     label: "What type of car are you looking for?",
     type: "choice",
     required: true,
@@ -329,7 +345,7 @@ const questions: Question[] = [
   },
   {
     id: "fuel_type",
-    number: 13,
+    number: 15,
     label: "What fuel type do you prefer?",
     type: "choice",
     required: true,
@@ -342,7 +358,7 @@ const questions: Question[] = [
   },
   {
     id: "transmission",
-    number: 14,
+    number: 16,
     label: "Do you prefer manual or automatic?",
     type: "choice",
     required: true,
@@ -355,6 +371,52 @@ const questions: Question[] = [
 
 type Phase = "visible" | "exiting" | "pre-enter" | "entering";
 type Direction = "forward" | "back";
+
+const REVIEW_FIELDS: {
+  id: string;
+  label: string;
+  format: (v: string) => string;
+}[] = [
+  { id: "first_name", label: "First name", format: (v) => v },
+  { id: "last_name", label: "Last name", format: (v) => v },
+  { id: "gender", label: "Gender", format: (v) => ({ male: "Male", female: "Female", "non-binary": "Non-binary", "prefer-not-to-say": "Prefer not to say" }[v] ?? v) },
+  { id: "location", label: "Province", format: (v) => v },
+  { id: "city", label: "City", format: (v) => v },
+  { id: "net_salary", label: "Monthly salary", format: (v) => v ? `R ${Math.round(parseFloat(v.replace(/[^\d.]/g, ""))).toLocaleString()}` : "—" },
+  { id: "id_number", label: "ID number", format: (v) => v ? `••••••••• ${v.slice(-4)}` : "—" },
+  { id: "expenses_groceries", label: "Groceries (monthly)", format: (v) => v ? `R ${Math.round(parseFloat(v.replace(/[^\d.]/g, ""))).toLocaleString()}` : "—" },
+  { id: "expenses_accounts", label: "Accounts (monthly)", format: (v) => v ? `R ${Math.round(parseFloat(v.replace(/[^\d.]/g, ""))).toLocaleString()}` : "—" },
+  { id: "expenses_loans", label: "Loans / credit cards", format: (v) => v ? `R ${Math.round(parseFloat(v.replace(/[^\d.]/g, ""))).toLocaleString()}` : "—" },
+  { id: "expenses_other", label: "Other expenses", format: (v) => v ? `R ${Math.round(parseFloat(v.replace(/[^\d.]/g, ""))).toLocaleString()}` : "None" },
+  { id: "years_licenced", label: "Years licensed", format: (v) => ({ "less-than-1": "Less than 1 year", "1-3": "1–3 years", "3-5": "3–5 years", "5-plus": "5+ years" }[v] ?? v) },
+  { id: "preferred_brand", label: "Preferred brands", format: (v) => v ? v.split(",").map((b) => b.trim().charAt(0).toUpperCase() + b.trim().slice(1)).join(", ") : "None selected" },
+  { id: "car_type", label: "Car type", format: (v) => ({ hatchback: "Hatchback", sedan: "Sedan", suv: "SUV", bakkie: "Bakkie" }[v] ?? v) },
+  { id: "fuel_type", label: "Fuel type", format: (v) => ({ petrol: "Petrol", diesel: "Diesel", hybrid: "Hybrid", electric: "Electric" }[v] ?? v) },
+  { id: "transmission", label: "Transmission", format: (v) => ({ manual: "Manual", automatic: "Automatic" }[v] ?? v) },
+];
+
+const CURRENCY_FIELDS = new Set([
+  "net_salary",
+  "expenses_groceries",
+  "expenses_accounts",
+  "expenses_loans",
+  "expenses_other",
+]);
+
+function sanitizeCurrencyInput(value: string): string {
+  // Allow digits and at most one decimal point, strip everything else
+  let result = "";
+  let hasDecimal = false;
+  for (const ch of value) {
+    if (ch >= "0" && ch <= "9") {
+      result += ch;
+    } else if (ch === "." && !hasDecimal) {
+      hasDecimal = true;
+      result += ch;
+    }
+  }
+  return result;
+}
 
 function parseCurrencyValue(value: string): number {
   const numeric = value.replace(/[^\d.]/g, "");
@@ -372,7 +434,12 @@ function validateStep(question: Question, answer: string, answers: Record<string
 
   if (question.id === "net_salary" && answer.trim()) {
     const val = parseCurrencyValue(answer);
-    if (isNaN(val) || val <= 0) return "Enter a valid monthly salary";
+    if (isNaN(val) || val <= 0) return "Please enter a valid salary greater than R 0";
+  }
+
+  if (CURRENCY_FIELDS.has(question.id) && question.id !== "net_salary" && answer.trim()) {
+    const val = parseCurrencyValue(answer);
+    if (isNaN(val) || val < 0) return "Amount must be R 0 or more";
   }
 
   if (question.id === "id_number" && answer.trim()) {
@@ -400,6 +467,7 @@ export default function FormPage() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
+  const [showReview, setShowReview] = useState(false);
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -525,29 +593,7 @@ export default function FormPage() {
     setError("");
 
     if (step === questions.length - 1) {
-      setSubmissionError("");
-      setIsSubmitting(true);
-
-      try {
-        const userId = sessionStorage.getItem("user_id") ?? "";
-        const email = sessionStorage.getItem("user_email") ?? "";
-        const result = await submitQuestionnaire(answers, userId, email);
-
-        sessionStorage.setItem("recommendations", JSON.stringify(result.recommendations));
-        sessionStorage.setItem("result_source", result.source);
-        sessionStorage.setItem("form_answers", JSON.stringify(answers));
-
-        router.push("/dashboard");
-      } catch (err) {
-        setSubmissionError(
-          err instanceof Error
-            ? err.message
-            : "Something went wrong. Please try again.",
-        );
-      } finally {
-        setIsSubmitting(false);
-      }
-
+      setShowReview(true);
       return;
     }
 
@@ -558,6 +604,27 @@ export default function FormPage() {
     if (isAnimating || isSubmitting || step === 0) return;
     setError("");
     window.history.back();
+  }
+
+  async function handleSubmit() {
+    setSubmissionError("");
+    setIsSubmitting(true);
+    try {
+      const userId = sessionStorage.getItem("user_id") ?? "";
+      const email = sessionStorage.getItem("user_email") ?? "";
+      const result = await submitQuestionnaire(answers, userId, email);
+      sessionStorage.setItem("recommendations", JSON.stringify(result.recommendations));
+      sessionStorage.setItem("result_source", result.source);
+      sessionStorage.setItem("form_answers", JSON.stringify(answers));
+      sessionStorage.setItem("credit_score", String(result.creditScore));
+      router.push("/dashboard");
+    } catch (err) {
+      setSubmissionError(
+        err instanceof Error ? err.message : "Something went wrong. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function selectChoice(value: string) {
@@ -658,9 +725,78 @@ export default function FormPage() {
       <div className="fixed left-0 right-0 top-0 z-50 h-1 bg-gray-200">
         <div
           className="h-full bg-blue-500 transition-all duration-500 ease-out"
-          style={{ width: `${progress}%` }}
+          style={{ width: showReview ? "100%" : `${progress}%` }}
         />
       </div>
+
+      {/* Full-screen loading overlay */}
+      {isSubmitting && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/90 backdrop-blur-sm gap-5">
+          <div className="h-12 w-12 rounded-full border-4 border-blue-200 border-t-blue-500 animate-spin" />
+          <div className="text-center">
+            <p className="text-base font-semibold text-gray-800">Analysing your profile…</p>
+            <p className="mt-1 text-sm text-gray-500">Finding the best cars for your budget</p>
+          </div>
+        </div>
+      )}
+
+      {showReview ? (
+        /* ── Review screen ── */
+        <div className="flex flex-1 items-start justify-center px-6 py-16">
+          <div className="w-full max-w-xl">
+            <p className="mb-2 text-sm font-semibold uppercase tracking-widest text-blue-500">
+              Almost done
+            </p>
+            <h2 className="text-2xl font-semibold text-gray-900 sm:text-3xl">
+              Review your answers
+            </h2>
+            <p className="mt-2 text-gray-500">
+              Make sure everything looks correct before we find your best cars.
+            </p>
+
+            <dl className="mt-8 divide-y divide-gray-100 rounded-2xl border border-gray-200 bg-white overflow-hidden">
+              {REVIEW_FIELDS.map(({ id, label, format }) => {
+                const raw = answers[id] ?? "";
+                if (!raw && id !== "preferred_brand") return null;
+                return (
+                  <div key={id} className="flex items-baseline justify-between gap-4 px-5 py-3.5">
+                    <dt className="text-sm text-gray-500 shrink-0">{label}</dt>
+                    <dd className="text-sm font-medium text-gray-900 text-right">{format(raw)}</dd>
+                  </div>
+                );
+              })}
+            </dl>
+
+            {submissionError && (
+              <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                {submissionError}
+              </p>
+            )}
+
+            <div className="mt-6 flex items-center gap-3">
+              <button
+                onClick={() => { setShowReview(false); setSubmissionError(""); }}
+                disabled={isSubmitting}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
+              >
+                ← Edit answers
+              </button>
+              <button
+                onClick={() => void handleSubmit()}
+                disabled={isSubmitting}
+                className="flex items-center gap-2 rounded-lg bg-blue-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-600 active:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? "Submitting…" : "Confirm & submit"}
+                {!isSubmitting && <span>→</span>}
+              </button>
+            </div>
+
+            <p className="mt-3 text-xs text-gray-400">
+              {isUsingMockData() ? "Mock data mode is enabled." : "Submitting to the live backend."}
+            </p>
+          </div>
+        </div>
+      ) : (
 
       <div className="flex flex-1 items-center justify-center px-6 py-20">
         <div className="w-full max-w-xl" style={getStyle()}>
@@ -685,7 +821,14 @@ export default function FormPage() {
                   <p className="text-sm text-amber-600">Please go back and select your province first.</p>
                 )}
                 <select
-                  value={answers[question.id] ?? ""}
+                  value={
+                    question.id === "city" &&
+                    !(SA_PROVINCE_CITIES[answers.location ?? ""] ?? []).some(
+                      (o) => o.value === answers.city
+                    )
+                      ? ""
+                      : answers[question.id] ?? ""
+                  }
                   onChange={(e) => {
                     const val = e.target.value;
                     setAnswers((prev) => {
@@ -711,6 +854,36 @@ export default function FormPage() {
                     </option>
                   ))}
                 </select>
+
+                {question.id === "city" && answers.location && (
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs text-gray-400">
+                      Can&apos;t find your city? Type it below.
+                    </p>
+                    <input
+                      type="text"
+                      placeholder="e.g. Alberton, Midrand, Soweto..."
+                      value={
+                        (SA_PROVINCE_CITIES[answers.location ?? ""] ?? []).some(
+                          (o) => o.value === answers.city
+                        )
+                          ? ""
+                          : (answers.city ?? "")
+                      }
+                      onChange={(e) => {
+                        setAnswers((prev) => ({ ...prev, city: e.target.value }));
+                        if (error) setError("");
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void goNext();
+                        }
+                      }}
+                      className="w-full border-b-2 border-gray-300 bg-transparent py-2 text-base text-gray-900 placeholder:text-gray-400 outline-none transition-colors focus:border-blue-500"
+                    />
+                  </div>
+                )}
               </div>
             ) : question.type === "multi-select" && question.options ? (
               <div className="flex flex-col gap-4">
@@ -929,22 +1102,29 @@ export default function FormPage() {
                 className="w-full resize-none border-b-2 border-gray-300 bg-transparent py-3 text-xl text-gray-900 placeholder:text-gray-400 outline-none transition-colors focus:border-blue-500"
               />
             ) : (
-              <input
-                ref={inputRef}
-                type={question.type}
-                value={answers[question.id] ?? ""}
-                onChange={(event) => {
-                  setAnswers((prev) => ({
-                    ...prev,
-                    [question.id]: event.target.value,
-                  }));
-                  if (error) setError("");
-                }}
-                onKeyDown={handleInputKeyDown}
-                placeholder={question.placeholder}
-                maxLength={question.id === "id_number" ? 13 : undefined}
-                className="w-full border-b-2 border-gray-300 bg-transparent py-3 text-xl text-gray-900 placeholder:text-gray-400 outline-none transition-colors focus:border-blue-500"
-              />
+              <div className={CURRENCY_FIELDS.has(question.id) ? "flex items-baseline gap-1" : undefined}>
+                {CURRENCY_FIELDS.has(question.id) && (
+                  <span className="text-xl font-medium text-gray-400 select-none">R</span>
+                )}
+                <input
+                  ref={inputRef}
+                  type={question.type}
+                  inputMode={CURRENCY_FIELDS.has(question.id) ? "decimal" : undefined}
+                  value={answers[question.id] ?? ""}
+                  onChange={(event) => {
+                    const raw = event.target.value;
+                    const cleaned = CURRENCY_FIELDS.has(question.id)
+                      ? sanitizeCurrencyInput(raw)
+                      : raw;
+                    setAnswers((prev) => ({ ...prev, [question.id]: cleaned }));
+                    if (error) setError("");
+                  }}
+                  onKeyDown={handleInputKeyDown}
+                  placeholder={CURRENCY_FIELDS.has(question.id) ? question.placeholder?.replace(/^R\s?/, "") : question.placeholder}
+                  maxLength={question.id === "id_number" ? 13 : undefined}
+                  className="w-full border-b-2 border-gray-300 bg-transparent py-3 text-xl text-gray-900 placeholder:text-gray-400 outline-none transition-colors focus:border-blue-500"
+                />
+              </div>
             )}
 
             {error && (
@@ -953,17 +1133,6 @@ export default function FormPage() {
               </p>
             )}
 
-            {submissionError && step === questions.length - 1 && (
-              <p className="mt-3 text-sm text-red-500">{submissionError}</p>
-            )}
-
-            {step === questions.length - 1 && (
-              <p className="mt-3 text-xs text-gray-400">
-                {isUsingMockData()
-                  ? "Mock data mode is enabled."
-                  : "Submitting to the live backend and database."}
-              </p>
-            )}
           </div>
 
           {(showContinueButton || question.type === "select") && (
@@ -973,11 +1142,7 @@ export default function FormPage() {
                 disabled={isSubmitting}
                 className="flex items-center gap-2 rounded-lg bg-blue-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-600 active:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {step === questions.length - 1
-                  ? isSubmitting
-                    ? "Submitting..."
-                    : "Submit"
-                  : "OK"}
+                {step === questions.length - 1 ? "Review →" : "OK"}
                 {step < questions.length - 1 && <span>✓</span>}
               </button>
               <span className="text-xs text-gray-400">
@@ -991,36 +1156,42 @@ export default function FormPage() {
         </div>
       </div>
 
-      <div className="fixed bottom-6 left-6 flex items-center gap-3">
-        <span className="text-xs text-gray-400">
-          {step + 1} / {questions.length}
-        </span>
-        <button
-          onClick={() => router.push("/dashboard")}
-          className="text-xs text-gray-400 underline underline-offset-2 hover:text-gray-600 transition-colors"
-        >
-          Go to dashboard
-        </button>
-      </div>
+      )} {/* end review/question conditional */}
 
-      <div className="fixed bottom-6 right-6 flex gap-2">
-        <button
-          onClick={goBack}
-          disabled={step === 0 || isAnimating || isSubmitting}
-          aria-label="Previous question"
-          className="flex h-9 w-9 items-center justify-center rounded border border-gray-300 text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-30"
-        >
-          ↑
-        </button>
-        <button
-          onClick={() => void goNext()}
-          disabled={isAnimating || isSubmitting}
-          aria-label="Next question"
-          className="flex h-9 w-9 items-center justify-center rounded border border-gray-300 text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-30"
-        >
-          ↓
-        </button>
-      </div>
+      {!showReview && (
+        <>
+          <div className="fixed bottom-6 left-6 flex items-center gap-3">
+            <span className="text-xs text-gray-400">
+              {step + 1} / {questions.length}
+            </span>
+            <button
+              onClick={() => router.push("/dashboard")}
+              className="text-xs text-gray-400 underline underline-offset-2 hover:text-gray-600 transition-colors"
+            >
+              Go to dashboard
+            </button>
+          </div>
+
+          <div className="fixed bottom-6 right-6 flex gap-2">
+            <button
+              onClick={goBack}
+              disabled={step === 0 || isAnimating || isSubmitting}
+              aria-label="Previous question"
+              className="flex h-9 w-9 items-center justify-center rounded border border-gray-300 text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              ↑
+            </button>
+            <button
+              onClick={() => void goNext()}
+              disabled={isAnimating || isSubmitting}
+              aria-label="Next question"
+              className="flex h-9 w-9 items-center justify-center rounded border border-gray-300 text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              ↓
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

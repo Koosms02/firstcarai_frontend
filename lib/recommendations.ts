@@ -272,7 +272,7 @@ export async function login(payload: SignupPayload): Promise<{ id: string; email
     return { id: 'mock-user-id', email: payload.email };
   }
 
-  const { access_token } = await request<{ access_token: string }>('/auth/login', {
+  const { access_token } = await request<{ access_token: string }>('/auth/signin', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -311,6 +311,7 @@ export async function submitQuestionnaire(
     return {
       source: 'mock' as const,
       recommendations: getMockRecommendations(answers),
+      creditScore: mockCreditScore,
     };
   }
 
@@ -363,6 +364,7 @@ export async function submitQuestionnaire(
   return {
     source: 'api' as const,
     recommendations: recommendations.map(toRecommendation),
+    creditScore,
   };
 }
 
@@ -393,7 +395,9 @@ export async function getUsers(): Promise<User[]> {
 export async function getUser(userId: string): Promise<User | null> {
   if (USE_MOCK_DATA) {
     await new Promise((resolve) => setTimeout(resolve, 100));
-    return { id: userId, email: 'mock@example.com' };
+    // In mock mode, return null so the login flow correctly sends new users to the form.
+    // The dashboard sets hasSubmittedForm from sessionStorage instead.
+    return null;
   }
 
   try {
@@ -410,6 +414,29 @@ export async function deleteUser(userId: string): Promise<void> {
   }
 
   await request(`/users/${userId}`, { method: 'DELETE' });
+}
+
+export async function forgotPassword(email: string): Promise<{ resetCode?: string }> {
+  if (USE_MOCK_DATA) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return { resetCode: '123456' };
+  }
+  return request<{ resetCode?: string }>('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(email: string, resetCode: string, newPassword: string): Promise<void> {
+  if (USE_MOCK_DATA) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    if (resetCode !== '123456') throw new Error('Invalid reset code.');
+    return;
+  }
+  await request('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ email, resetCode, newPassword }),
+  });
 }
 
 export function isUsingMockData() {
