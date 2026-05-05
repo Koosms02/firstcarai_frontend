@@ -434,7 +434,21 @@ export default function DashboardPage() {
           </svg>
           <span className="text-lg font-bold text-gray-900">FirstCar</span>
         </div>
-        <span className="text-sm text-gray-500">{email}</span>
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-gray-500">{email}</span>
+          <button
+            onClick={() => {
+              sessionStorage.clear();
+              router.push('/');
+            }}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M6 2H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3M10 11l3-3-3-3M13 8H6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Sign out
+          </button>
+        </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-10 flex flex-col gap-8">

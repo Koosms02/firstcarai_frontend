@@ -247,11 +247,12 @@ const AnimatedForm = memo(function AnimatedForm({
         currentErrors[field.label] = 'Please enter a valid email address';
       }
 
-      if (field.type === 'password' && value) {
+      // Only enforce password strength on sign-up (showTerms = true)
+      if (field.type === 'password' && value && showTerms) {
         if (value.length < 8) {
           currentErrors[field.label] = 'Password must be at least 8 characters';
         } else if (!/(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^A-Za-z\d])/.test(value)) {
-          currentErrors[field.label] = 'Password must include upper, lower, number and symbol';
+          currentErrors[field.label] = 'Password must include uppercase, lowercase, a number and a symbol';
         }
       }
     });

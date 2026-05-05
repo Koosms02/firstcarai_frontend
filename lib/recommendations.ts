@@ -31,6 +31,7 @@ type UpsertUserPayload = {
   email: string;
   netSalary: number;
   creditScore: number;
+  fullName?: string;
   idNumber?: string;
   yearsLicensed?: number;
   gender?: string;
@@ -190,10 +191,12 @@ function buildUpsertUserPayload(
   answers: QuestionnaireAnswers,
   creditScore: number,
 ): UpsertUserPayload {
+  const nameParts = [answers.first_name, answers.last_name].filter(Boolean);
   return {
     email,
     netSalary: parseCurrency(answers.net_salary),
     creditScore,
+    fullName: nameParts.length > 0 ? nameParts.join(' ') : undefined,
     idNumber: answers.id_number || undefined,
     yearsLicensed: YEARS_LICENSED_MAP[answers.years_licenced],
     gender: answers.gender || undefined,
@@ -371,12 +374,20 @@ export async function submitQuestionnaire(
 export type User = {
   id: string;
   email: string;
+  fullName?: string | null;
   netSalary?: number | null;
   creditScore?: number | null;
   yearsLicensed?: number | null;
   gender?: string | null;
   location?: string | null;
+  idNumber?: string | null;
   createdAt?: string | null;
+  preferences?: Array<{
+    preferredBrand?: string | null;
+    carType?: string | null;
+    fuelType?: string | null;
+    transmission?: string | null;
+  }>;
 };
 
 export async function getUsers(): Promise<User[]> {
@@ -416,26 +427,46 @@ export async function deleteUser(userId: string): Promise<void> {
   await request(`/users/${userId}`, { method: 'DELETE' });
 }
 
-export async function forgotPassword(email: string): Promise<{ resetCode?: string }> {
+export async function getUserRecommendations(userId: string): Promise<Recommendation[]> {
+  if (USE_MOCK_DATA) return [];
+  try {
+    const raw = await request<Array<{
+      id: string;
+      estimatedMonthlyCost: number | string | null;
+      insuranceCost: number | string | null;
+      loanCost: number | string | null;
+      maintenanceCost: number | string | null;
+      fuelCost: number | string | null;
+      score: number | string | null;
+      car: RecommendationCar;
+    }>>(`/recommendations/user/${userId}`);
+    return raw.map(toRecommendation);
+  } catch {
+    return [];
+  }
+}
+
+export async function forgotPassword(email: string): Promise<{ resetPath: string | null }> {
   if (USE_MOCK_DATA) {
     await new Promise((resolve) => setTimeout(resolve, 400));
-    return { resetCode: '123456' };
+    const mockToken = 'mock-uuid-1234-5678-abcd-efgh';
+    return { resetPath: `/r/${encodeURIComponent(email)}/${mockToken}` };
   }
-  return request<{ resetCode?: string }>('/auth/forgot-password', {
+  return request<{ resetPath: string | null }>('/auth/forgot-password', {
     method: 'POST',
     body: JSON.stringify({ email }),
   });
 }
 
-export async function resetPassword(email: string, resetCode: string, newPassword: string): Promise<void> {
+export async function resetPassword(email: string, token: string, newPassword: string): Promise<void> {
   if (USE_MOCK_DATA) {
     await new Promise((resolve) => setTimeout(resolve, 400));
-    if (resetCode !== '123456') throw new Error('Invalid reset code.');
+    if (token !== 'mock-uuid-1234-5678-abcd-efgh') throw new Error('Invalid or expired reset link.');
     return;
   }
   await request('/auth/reset-password', {
     method: 'POST',
-    body: JSON.stringify({ email, resetCode, newPassword }),
+    body: JSON.stringify({ email, token, newPassword }),
   });
 }
 
