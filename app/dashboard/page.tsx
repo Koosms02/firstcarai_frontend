@@ -749,6 +749,19 @@ export default function DashboardPage() {
                       </button>
                     </div>
 
+                    {/* Car image */}
+                    {rec.car.imageUrl && (
+                      <div className="relative w-full h-36 -mx-5 mb-3 overflow-hidden" style={{ width: 'calc(100% + 2.5rem)' }}>
+                        <img
+                          src={rec.car.imageUrl}
+                          alt={`${rec.car.make} ${rec.car.model}`}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-white/60 to-transparent" />
+                      </div>
+                    )}
+
                     {/* Match score */}
                     <p className="text-xs font-semibold uppercase tracking-widest text-blue-500">
                       Match {(rec.score * 100).toFixed(0)}%
@@ -862,9 +875,17 @@ export default function DashboardPage() {
 
             {/* Car summary */}
             <div className="flex items-center gap-4 rounded-xl bg-amber-50 border border-amber-100 px-5 py-4 mb-6">
-              <div className="h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold text-sm select-none">
-                {preferredCar.car.make.slice(0, 2).toUpperCase()}
-              </div>
+              {preferredCar.car.imageUrl ? (
+                <img
+                  src={preferredCar.car.imageUrl}
+                  alt={`${preferredCar.car.make} ${preferredCar.car.model}`}
+                  className="h-14 w-20 rounded-lg object-cover shrink-0"
+                />
+              ) : (
+                <div className="h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold text-sm select-none">
+                  {preferredCar.car.make.slice(0, 2).toUpperCase()}
+                </div>
+              )}
               <div className="flex-1">
                 <p className="font-semibold text-gray-900 text-base">
                   {preferredCar.car.make} {preferredCar.car.model}

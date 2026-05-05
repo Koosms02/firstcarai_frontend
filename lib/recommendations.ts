@@ -7,6 +7,7 @@ export type RecommendationCar = {
   fuelType: string | null;
   transmission: string | null;
   mileage: number | null;
+  imageUrl: string | null;
 };
 
 export type Recommendation = {
@@ -80,6 +81,7 @@ const MOCK_RECOMMENDATIONS: Recommendation[] = [
       fuelType: 'petrol',
       transmission: 'automatic',
       mileage: 48200,
+      imageUrl: 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800&auto=format&fit=crop&q=70',
     },
   },
   {
@@ -99,6 +101,7 @@ const MOCK_RECOMMENDATIONS: Recommendation[] = [
       fuelType: 'petrol',
       transmission: 'manual',
       mileage: 35100,
+      imageUrl: 'https://images.unsplash.com/photo-1553440569-bcc63803a83d?w=800&auto=format&fit=crop&q=70',
     },
   },
   {
@@ -118,6 +121,7 @@ const MOCK_RECOMMENDATIONS: Recommendation[] = [
       fuelType: 'petrol',
       transmission: 'automatic',
       mileage: 42800,
+      imageUrl: 'https://images.unsplash.com/photo-1600712242805-5f78671b24da?w=800&auto=format&fit=crop&q=70',
     },
   },
 ];
@@ -427,19 +431,34 @@ export async function deleteUser(userId: string): Promise<void> {
   await request(`/users/${userId}`, { method: 'DELETE' });
 }
 
+type RawRecommendation = {
+  id: string;
+  estimatedMonthlyCost: number | string | null;
+  insuranceCost: number | string | null;
+  loanCost: number | string | null;
+  maintenanceCost: number | string | null;
+  fuelCost: number | string | null;
+  score: number | string | null;
+  car: RecommendationCar;
+};
+
 export async function getUserRecommendations(userId: string): Promise<Recommendation[]> {
   if (USE_MOCK_DATA) return [];
   try {
-    const raw = await request<Array<{
-      id: string;
-      estimatedMonthlyCost: number | string | null;
-      insuranceCost: number | string | null;
-      loanCost: number | string | null;
-      maintenanceCost: number | string | null;
-      fuelCost: number | string | null;
-      score: number | string | null;
-      car: RecommendationCar;
-    }>>(`/recommendations/user/${userId}`);
+    const raw = await request<RawRecommendation[]>(`/recommendations/user/${userId}`);
+    return raw.map(toRecommendation);
+  } catch {
+    return [];
+  }
+}
+
+export async function generateRecommendations(userId: string): Promise<Recommendation[]> {
+  if (USE_MOCK_DATA) return [];
+  try {
+    const raw = await request<RawRecommendation[]>('/recommendations/generate', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
     return raw.map(toRecommendation);
   } catch {
     return [];

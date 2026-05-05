@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import Image from 'next/image';
-import { signup, login, getUser, getUserRecommendations, forgotPassword, resetPassword } from '@/lib/recommendations';
+import { signup, login, getUser, getUserRecommendations, generateRecommendations, forgotPassword, resetPassword } from '@/lib/recommendations';
 import { AnimatedForm } from '@/components/ui/auth-components';
 
 const GOLF_R_URL =
@@ -88,9 +88,13 @@ export default function Home() {
             sessionStorage.setItem('credit_score', String(profile.creditScore));
           }
 
-          const existingRecs = await getUserRecommendations(user.id);
-          if (existingRecs.length > 0) {
-            sessionStorage.setItem('recommendations', JSON.stringify(existingRecs));
+          let recs = await getUserRecommendations(user.id);
+          if (recs.length === 0) {
+            // No saved recommendations — auto-generate from profile already in DB
+            recs = await generateRecommendations(user.id);
+          }
+          if (recs.length > 0) {
+            sessionStorage.setItem('recommendations', JSON.stringify(recs));
             sessionStorage.setItem('result_source', 'api');
           }
         }
