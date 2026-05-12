@@ -1,155 +1,50 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import {
-  isUsingMockData,
-  submitQuestionnaire,
-  type Recommendation,
-} from "@/lib/recommendations";
+import { isUsingMockData, submitQuestionnaire, analyzeExpenses, generateAiRecommendations } from "@/lib/recommendations";
 
-type QuestionType = "text" | "email" | "tel" | "textarea" | "choice" | "select" | "multi-select";
+// ─── Static data ────────────────────────────────────────────────────────────
 
-interface ChoiceOption {
-  value: string;
-  label: string;
-  key: string;
-}
-
-interface SelectOption {
-  value: string;
-  label: string;
-}
-
-interface Question {
-  id: string;
-  number: number;
-  label: string;
-  description?: string;
-  type: QuestionType;
-  placeholder?: string;
-  required: boolean;
-  options?: ChoiceOption[];
-  selectOptions?: SelectOption[];
-  allowOther?: boolean;
-}
-
-const SA_PROVINCES: SelectOption[] = [
-  { value: "Gauteng", label: "Gauteng" },
-  { value: "Western Cape", label: "Western Cape" },
-  { value: "KwaZulu-Natal", label: "KwaZulu-Natal" },
-  { value: "Eastern Cape", label: "Eastern Cape" },
-  { value: "Limpopo", label: "Limpopo" },
-  { value: "Mpumalanga", label: "Mpumalanga" },
-  { value: "North West", label: "North West" },
-  { value: "Free State", label: "Free State" },
-  { value: "Northern Cape", label: "Northern Cape" },
+const SA_PROVINCES = [
+  "Gauteng", "Western Cape", "KwaZulu-Natal", "Eastern Cape",
+  "Limpopo", "Mpumalanga", "North West", "Free State", "Northern Cape",
 ];
 
-const SA_PROVINCE_CITIES: Record<string, SelectOption[]> = {
-  Gauteng: [
-    { value: "Johannesburg", label: "Johannesburg" },
-    { value: "Pretoria", label: "Pretoria" },
-    { value: "Centurion", label: "Centurion" },
-    { value: "Sandton", label: "Sandton" },
-    { value: "Randburg", label: "Randburg" },
-    { value: "Roodepoort", label: "Roodepoort" },
-    { value: "Soweto", label: "Soweto" },
-    { value: "Benoni", label: "Benoni" },
-    { value: "Boksburg", label: "Boksburg" },
-    { value: "Ekurhuleni", label: "Ekurhuleni (East Rand)" },
-  ],
-  "Western Cape": [
-    { value: "Cape Town", label: "Cape Town" },
-    { value: "Bellville", label: "Bellville" },
-    { value: "Stellenbosch", label: "Stellenbosch" },
-    { value: "Paarl", label: "Paarl" },
-    { value: "Somerset West", label: "Somerset West" },
-    { value: "Worcester", label: "Worcester" },
-    { value: "George", label: "George" },
-    { value: "Knysna", label: "Knysna" },
-    { value: "Mossel Bay", label: "Mossel Bay" },
-  ],
-  "KwaZulu-Natal": [
-    { value: "Durban", label: "Durban" },
-    { value: "Pietermaritzburg", label: "Pietermaritzburg" },
-    { value: "Richards Bay", label: "Richards Bay" },
-    { value: "Newcastle", label: "Newcastle" },
-    { value: "Pinetown", label: "Pinetown" },
-    { value: "Empangeni", label: "Empangeni" },
-    { value: "Ladysmith", label: "Ladysmith" },
-    { value: "Amanzimtoti", label: "Amanzimtoti" },
-  ],
-  "Eastern Cape": [
-    { value: "Gqeberha", label: "Gqeberha (Port Elizabeth)" },
-    { value: "East London", label: "East London" },
-    { value: "Mthatha", label: "Mthatha" },
-    { value: "Queenstown", label: "Queenstown" },
-    { value: "Makhanda", label: "Makhanda (Grahamstown)" },
-  ],
-  Limpopo: [
-    { value: "Polokwane", label: "Polokwane" },
-    { value: "Tzaneen", label: "Tzaneen" },
-    { value: "Phalaborwa", label: "Phalaborwa" },
-    { value: "Louis Trichardt", label: "Louis Trichardt" },
-    { value: "Mokopane", label: "Mokopane" },
-    { value: "Bela-Bela", label: "Bela-Bela" },
-  ],
-  Mpumalanga: [
-    { value: "Nelspruit", label: "Nelspruit (Mbombela)" },
-    { value: "Witbank", label: "Witbank (eMalahleni)" },
-    { value: "Secunda", label: "Secunda" },
-    { value: "Middelburg", label: "Middelburg" },
-    { value: "Barberton", label: "Barberton" },
-  ],
-  "North West": [
-    { value: "Mahikeng", label: "Mahikeng (Mafikeng)" },
-    { value: "Rustenburg", label: "Rustenburg" },
-    { value: "Klerksdorp", label: "Klerksdorp" },
-    { value: "Potchefstroom", label: "Potchefstroom" },
-    { value: "Brits", label: "Brits" },
-  ],
-  "Free State": [
-    { value: "Bloemfontein", label: "Bloemfontein" },
-    { value: "Welkom", label: "Welkom" },
-    { value: "Bethlehem", label: "Bethlehem" },
-    { value: "Kroonstad", label: "Kroonstad" },
-    { value: "Phuthaditjhaba", label: "Phuthaditjhaba" },
-  ],
-  "Northern Cape": [
-    { value: "Kimberley", label: "Kimberley" },
-    { value: "Upington", label: "Upington" },
-    { value: "Springbok", label: "Springbok" },
-    { value: "De Aar", label: "De Aar" },
-    { value: "Kuruman", label: "Kuruman" },
-  ],
+const SA_PROVINCE_CITIES: Record<string, string[]> = {
+  Gauteng: ["Johannesburg", "Pretoria", "Centurion", "Sandton", "Randburg", "Roodepoort", "Soweto", "Benoni", "Boksburg", "Ekurhuleni (East Rand)"],
+  "Western Cape": ["Cape Town", "Bellville", "Stellenbosch", "Paarl", "Somerset West", "Worcester", "George", "Knysna", "Mossel Bay"],
+  "KwaZulu-Natal": ["Durban", "Pietermaritzburg", "Richards Bay", "Newcastle", "Pinetown", "Empangeni", "Ladysmith", "Amanzimtoti"],
+  "Eastern Cape": ["Gqeberha (Port Elizabeth)", "East London", "Mthatha", "Queenstown", "Makhanda (Grahamstown)"],
+  Limpopo: ["Polokwane", "Tzaneen", "Phalaborwa", "Louis Trichardt", "Mokopane", "Bela-Bela"],
+  Mpumalanga: ["Nelspruit (Mbombela)", "Witbank (eMalahleni)", "Secunda", "Middelburg", "Barberton"],
+  "North West": ["Mahikeng (Mafikeng)", "Rustenburg", "Klerksdorp", "Potchefstroom", "Brits"],
+  "Free State": ["Bloemfontein", "Welkom", "Bethlehem", "Kroonstad", "Phuthaditjhaba"],
+  "Northern Cape": ["Kimberley", "Upington", "Springbok", "De Aar", "Kuruman"],
 };
 
 const CAR_BRANDS = [
-  'Alfa Romeo', 'Audi', 'BAIC', 'Bentley', 'BMW', 'BYD', 'Chery',
-  'Chevrolet', 'Citroën', 'Daihatsu', 'Ferrari', 'Fiat', 'Ford',
-  'GWM', 'Haval', 'Honda', 'Hyundai', 'Infiniti', 'Isuzu', 'Jaguar',
-  'Jeep', 'Kia', 'Lamborghini', 'Land Rover', 'Lexus', 'Mahindra',
-  'Maserati', 'Mazda', 'Mercedes-Benz', 'MG', 'Mini', 'Mitsubishi',
-  'Nissan', 'Opel', 'Peugeot', 'Porsche', 'Renault', 'Rolls-Royce',
-  'SEAT', 'Skoda', 'Subaru', 'Suzuki', 'Tata', 'Toyota',
-  'Volkswagen', 'Volvo',
+  "Alfa Romeo", "Audi", "BAIC", "Bentley", "BMW", "BYD", "Chery",
+  "Chevrolet", "Citroën", "Daihatsu", "Ferrari", "Fiat", "Ford",
+  "GWM", "Haval", "Honda", "Hyundai", "Infiniti", "Isuzu", "Jaguar",
+  "Jeep", "Kia", "Lamborghini", "Land Rover", "Lexus", "Mahindra",
+  "Maserati", "Mazda", "Mercedes-Benz", "MG", "Mini", "Mitsubishi",
+  "Nissan", "Opel", "Peugeot", "Porsche", "Renault", "Rolls-Royce",
+  "SEAT", "Skoda", "Subaru", "Suzuki", "Tata", "Toyota", "Volkswagen", "Volvo",
 ];
 
-function getBrandLabel(value: string, options?: { value: string; label: string }[]): string {
-  const opt = options?.find((o) => o.value === value);
-  if (opt) return opt.label;
-  const brand = CAR_BRANDS.find((b) => b.toLowerCase() === value.toLowerCase());
-  if (brand) return brand;
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
+const QUICK_BRANDS = ["Toyota", "Volkswagen", "Hyundai", "Ford", "BMW", "Mercedes-Benz", "Audi", "Kia", "Nissan"];
 
-// SA ID validation utilities
+const YEARS_LICENSED_MAP: Record<string, number> = {
+  "less-than-1": 0, "1-3": 2, "3-5": 4, "5-plus": 6,
+};
+
+// ─── Validation ──────────────────────────────────────────────────────────────
+
 function validateSaId(id: string): string | null {
   if (!id) return null;
-  if (!/^\d+$/.test(id)) return "ID number must contain only numbers";
-  if (id.length !== 13) return "ID number must be 13 digits";
-
+  if (!/^\d+$/.test(id)) return "Must contain only numbers";
+  if (id.length !== 13) return "Must be 13 digits";
   const yy = parseInt(id.substring(0, 2), 10);
   const mm = parseInt(id.substring(2, 4), 10);
   const dd = parseInt(id.substring(4, 6), 10);
@@ -157,24 +52,17 @@ function validateSaId(id: string): string | null {
   const currentYY = new Date().getFullYear() % 100;
   const year = yy <= currentYY ? 2000 + yy : 1900 + yy;
   const date = new Date(year, mm - 1, dd);
-  if (date.getFullYear() !== year || date.getMonth() !== mm - 1 || date.getDate() !== dd) {
+  if (date.getFullYear() !== year || date.getMonth() !== mm - 1 || date.getDate() !== dd)
     return "Invalid date in ID number";
-  }
-
-  // Luhn checksum
   let sum = 0;
   let alternate = false;
   for (let i = id.length - 1; i >= 0; i--) {
     let n = parseInt(id[i], 10);
-    if (alternate) {
-      n *= 2;
-      if (n > 9) n -= 9;
-    }
+    if (alternate) { n *= 2; if (n > 9) n -= 9; }
     sum += n;
     alternate = !alternate;
   }
-  if (sum % 10 !== 0) return "Invalid ID number";
-
+  if (sum % 10 !== 0) return "Invalid ID number (checksum failed)";
   return null;
 }
 
@@ -193,1005 +81,1008 @@ function extractAgeFromId(id: string): number | null {
   return age;
 }
 
-const YEARS_LICENSED_NUM: Record<string, number> = {
-  "less-than-1": 0,
-  "1-3": 2,
-  "3-5": 4,
-  "5-plus": 6,
-};
-
-const questions: Question[] = [
-  {
-    id: "first_name",
-    number: 1,
-    label: "What's your first name?",
-    type: "text",
-    placeholder: "e.g. Thabo",
-    required: true,
-  },
-  {
-    id: "last_name",
-    number: 2,
-    label: "And your last name?",
-    type: "text",
-    placeholder: "e.g. Nkosi",
-    required: true,
-  },
-  {
-    id: "gender",
-    number: 3,
-    label: "What's your gender?",
-    type: "choice",
-    required: true,
-    options: [
-      { value: "male", label: "Male", key: "A" },
-      { value: "female", label: "Female", key: "B" },
-      { value: "non-binary", label: "Non-binary", key: "C" },
-      { value: "prefer-not-to-say", label: "Prefer not to say", key: "D" },
-    ],
-  },
-  {
-    id: "location",
-    number: 4,
-    label: "Which province are you based in?",
-    description: "Select your province from the list.",
-    type: "select",
-    required: true,
-    selectOptions: SA_PROVINCES,
-  },
-  {
-    id: "city",
-    number: 5,
-    label: "Which city are you in?",
-    description: "Select your city within the selected province.",
-    type: "select",
-    required: true,
-    selectOptions: [],
-  },
-  {
-    id: "net_salary",
-    number: 6,
-    label: "What is your monthly net salary?",
-    description: "This helps us recommend cars within your affordability range.",
-    type: "text",
-    placeholder: "R 25,000",
-    required: true,
-  },
-  {
-    id: "id_number",
-    number: 7,
-    label: "What is your South African ID number?",
-    description: "We use this to determine your credit score securely.",
-    type: "text",
-    placeholder: "e.g. 9001015009087",
-    required: true,
-  },
-  {
-    id: "expenses_groceries",
-    number: 8,
-    label: "How much do you spend on groceries monthly?",
-    type: "text",
-    placeholder: "R 3,000",
-    required: true,
-  },
-  {
-    id: "expenses_accounts",
-    number: 9,
-    label: "How much do you spend on accounts (clothing, etc) monthly?",
-    type: "text",
-    placeholder: "R 1,500",
-    required: true,
-  },
-  {
-    id: "expenses_loans",
-    number: 10,
-    label: "How much do you spend on loans/credit cards monthly?",
-    type: "text",
-    placeholder: "R 2,000",
-    required: true,
-  },
-  {
-    id: "expenses_other",
-    number: 11,
-    label: "Any other monthly expenses?",
-    type: "text",
-    placeholder: "R 500",
-    required: false,
-  },
-  {
-    id: "years_licenced",
-    number: 12,
-    label: "How long have you been licenced?",
-    type: "choice",
-    required: true,
-    options: [
-      { value: "less-than-1", label: "Less than 1 year", key: "A" },
-      { value: "1-3", label: "1 – 3 years", key: "B" },
-      { value: "3-5", label: "3 – 5 years", key: "C" },
-      { value: "5-plus", label: "5+ years", key: "D" },
-    ],
-  },
-  {
-    id: "preferred_brand",
-    number: 13,
-    label: "Which car brands do you prefer?",
-    description: "Select one or more brands. This is optional.",
-    type: "multi-select",
-    required: false,
-    options: [
-      { value: "toyota", label: "Toyota", key: "A" },
-      { value: "volkswagen", label: "Volkswagen", key: "B" },
-      { value: "hyundai", label: "Hyundai", key: "C" },
-      { value: "ford", label: "Ford", key: "D" },
-      { value: "bmw", label: "BMW", key: "E" },
-      { value: "mercedes", label: "Mercedes-Benz", key: "F" },
-      { value: "audi", label: "Audi", key: "G" },
-      { value: "kia", label: "Kia", key: "H" },
-      { value: "nissan", label: "Nissan", key: "I" },
-    ],
-  },
-  {
-    id: "car_type",
-    number: 14,
-    label: "What type of car are you looking for?",
-    type: "choice",
-    required: true,
-    options: [
-      { value: "hatchback", label: "Hatchback", key: "A" },
-      { value: "sedan", label: "Sedan", key: "B" },
-      { value: "suv", label: "SUV", key: "C" },
-      { value: "bakkie", label: "Bakkie", key: "D" },
-    ],
-  },
-  {
-    id: "fuel_type",
-    number: 15,
-    label: "What fuel type do you prefer?",
-    type: "choice",
-    required: true,
-    options: [
-      { value: "petrol", label: "Petrol", key: "A" },
-      { value: "diesel", label: "Diesel", key: "B" },
-      { value: "hybrid", label: "Hybrid", key: "C" },
-      { value: "electric", label: "Electric", key: "D" },
-    ],
-  },
-  {
-    id: "transmission",
-    number: 16,
-    label: "Do you prefer manual or automatic?",
-    type: "choice",
-    required: true,
-    options: [
-      { value: "manual", label: "Manual", key: "A" },
-      { value: "automatic", label: "Automatic", key: "B" },
-    ],
-  },
-];
-
-type Phase = "visible" | "exiting" | "pre-enter" | "entering";
-type Direction = "forward" | "back";
-
-const REVIEW_FIELDS: {
-  id: string;
-  label: string;
-  format: (v: string) => string;
-}[] = [
-  { id: "first_name", label: "First name", format: (v) => v },
-  { id: "last_name", label: "Last name", format: (v) => v },
-  { id: "gender", label: "Gender", format: (v) => ({ male: "Male", female: "Female", "non-binary": "Non-binary", "prefer-not-to-say": "Prefer not to say" }[v] ?? v) },
-  { id: "location", label: "Province", format: (v) => v },
-  { id: "city", label: "City", format: (v) => v },
-  { id: "net_salary", label: "Monthly salary", format: (v) => v ? `R ${Math.round(parseFloat(v.replace(/[^\d.]/g, ""))).toLocaleString()}` : "—" },
-  { id: "id_number", label: "ID number", format: (v) => v ? `••••••••• ${v.slice(-4)}` : "—" },
-  { id: "expenses_groceries", label: "Groceries (monthly)", format: (v) => v ? `R ${Math.round(parseFloat(v.replace(/[^\d.]/g, ""))).toLocaleString()}` : "—" },
-  { id: "expenses_accounts", label: "Accounts (monthly)", format: (v) => v ? `R ${Math.round(parseFloat(v.replace(/[^\d.]/g, ""))).toLocaleString()}` : "—" },
-  { id: "expenses_loans", label: "Loans / credit cards", format: (v) => v ? `R ${Math.round(parseFloat(v.replace(/[^\d.]/g, ""))).toLocaleString()}` : "—" },
-  { id: "expenses_other", label: "Other expenses", format: (v) => v ? `R ${Math.round(parseFloat(v.replace(/[^\d.]/g, ""))).toLocaleString()}` : "None" },
-  { id: "years_licenced", label: "Years licensed", format: (v) => ({ "less-than-1": "Less than 1 year", "1-3": "1–3 years", "3-5": "3–5 years", "5-plus": "5+ years" }[v] ?? v) },
-  { id: "preferred_brand", label: "Preferred brands", format: (v) => v ? v.split(",").map((b) => b.trim().charAt(0).toUpperCase() + b.trim().slice(1)).join(", ") : "None selected" },
-  { id: "car_type", label: "Car type", format: (v) => ({ hatchback: "Hatchback", sedan: "Sedan", suv: "SUV", bakkie: "Bakkie" }[v] ?? v) },
-  { id: "fuel_type", label: "Fuel type", format: (v) => ({ petrol: "Petrol", diesel: "Diesel", hybrid: "Hybrid", electric: "Electric" }[v] ?? v) },
-  { id: "transmission", label: "Transmission", format: (v) => ({ manual: "Manual", automatic: "Automatic" }[v] ?? v) },
-];
-
-const CURRENCY_FIELDS = new Set([
-  "net_salary",
-  "expenses_groceries",
-  "expenses_accounts",
-  "expenses_loans",
-  "expenses_other",
-]);
-
-function sanitizeCurrencyInput(value: string): string {
-  // Allow digits and at most one decimal point, strip everything else
-  let result = "";
-  let hasDecimal = false;
-  for (const ch of value) {
-    if (ch >= "0" && ch <= "9") {
-      result += ch;
-    } else if (ch === "." && !hasDecimal) {
-      hasDecimal = true;
-      result += ch;
-    }
-  }
-  return result;
+function extractGenderFromId(id: string): "male" | "female" | null {
+  if (!id || id.length < 10) return null;
+  const genderDigits = parseInt(id.substring(6, 10), 10);
+  if (isNaN(genderDigits)) return null;
+  return genderDigits >= 5000 ? "male" : "female";
 }
 
-function parseCurrencyValue(value: string): number {
+function parseCurrency(value: string): number {
   const numeric = value.replace(/[^\d.]/g, "");
   return numeric ? parseFloat(numeric) : 0;
 }
 
-function validateStep(question: Question, answer: string, answers: Record<string, string>): string {
-  if (question.required && !answer.trim()) {
-    if (question.id === "location") return "Please select your province";
-    if (question.id === "city") return "Please select your city";
-    if (question.id === "net_salary") return "Salary is required";
-    if (question.id === "id_number") return "Please fill in this field to continue.";
-    return "Please fill in this field to continue.";
+function sanitizeCurrency(value: string): string {
+  let result = "";
+  let hasDecimal = false;
+  for (const ch of value) {
+    if (ch >= "0" && ch <= "9") result += ch;
+    else if (ch === "." && !hasDecimal) { hasDecimal = true; result += ch; }
   }
+  return result;
+}
 
-  if (question.id === "net_salary" && answer.trim()) {
-    const val = parseCurrencyValue(answer);
-    if (isNaN(val) || val <= 0) return "Please enter a valid salary greater than R 0";
-  }
+function getBrandDisplayName(value: string): string {
+  const match = CAR_BRANDS.find((b) => b.toLowerCase() === value.toLowerCase());
+  return match ?? (value.charAt(0).toUpperCase() + value.slice(1));
+}
 
-  if (CURRENCY_FIELDS.has(question.id) && question.id !== "net_salary" && answer.trim()) {
-    const val = parseCurrencyValue(answer);
-    if (isNaN(val) || val < 0) return "Amount must be R 0 or more";
-  }
+function parseBankStatementExpenses(text: string): {
+  groceries: number;
+  accounts: number;
+  loans: number;
+  other: number;
+} | null {
+  const GROCERY_KEYWORDS = [
+    "woolworths", "woolies", "pick n pay", "pnp", "shoprite", "checkers",
+    "spar", "food lovers", "food zone", "freshstop", "usave", "boxer",
+    "ok foods", "fruit & veg", "fruit and veg",
+  ];
+  const ACCOUNT_KEYWORDS = [
+    "edgars", "truworths", "foschini", "mr price", "mrp", "ackermans",
+    "pep store", "legit", "store account", "clothing account", "tfg",
+    "queenspark", "markham",
+  ];
+  const LOAN_KEYWORDS = [
+    "loan", "credit card", "home loan", "vehicle finance", "wesbank",
+    "repayment", "instalment", "installment", "bond payment", "mortgage",
+    "african bank", "bayport", "directaxis", "direct axis",
+    "capitec credit", "rcs", "debt repay",
+  ];
 
-  if (question.id === "id_number" && answer.trim()) {
-    const err = validateSaId(answer.trim());
-    if (err) return err;
-  }
+  const lines = text.split("\n");
+  let groceries = 0, accounts = 0, loans = 0;
+  let found = false;
 
-  if (question.id === "years_licenced" && answer) {
-    const idNumber = answers["id_number"] ?? "";
-    const age = extractAgeFromId(idNumber);
-    const yearsLicensed = YEARS_LICENSED_NUM[answer] ?? 0;
-    if (age !== null && yearsLicensed > age) {
-      return "Years licensed exceeds possible limit";
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+
+    // Match amounts that have cents (e.g. 1 250.00 or 1,250.00) — avoids
+    // picking up year numbers like "2024" as transaction values.
+    const amounts = [...line.matchAll(/\b(\d{1,3}(?:[,\s]\d{3})*\.\d{2})\b/g)]
+      .map((m) => parseFloat(m[1].replace(/[,\s]/g, "")))
+      .filter((v) => !isNaN(v) && v >= 10 && v <= 100_000);
+
+    if (amounts.length === 0) continue;
+    // Take the first matched amount — in most SA bank statement layouts
+    // the transaction amount precedes the running balance on the same line.
+    const amount = amounts[0];
+
+    if (GROCERY_KEYWORDS.some((k) => lower.includes(k))) {
+      groceries += amount; found = true;
+    } else if (ACCOUNT_KEYWORDS.some((k) => lower.includes(k))) {
+      accounts += amount; found = true;
+    } else if (LOAN_KEYWORDS.some((k) => lower.includes(k))) {
+      loans += amount; found = true;
     }
   }
 
-  return "";
+  if (!found) return null;
+
+  return {
+    groceries: Math.round(groceries),
+    accounts: Math.round(accounts),
+    loans: Math.round(loans),
+    other: 0,
+  };
 }
+
+function parseSalaryFromText(text: string): number | null {
+  const patterns = [
+    /nett?\s+pay\b[^\d]*?([\d\s,]+(?:\.\d{1,2})?)/i,
+    /nett?\s+salary\b[^\d]*?([\d\s,]+(?:\.\d{1,2})?)/i,
+    /nett?\s+income\b[^\d]*?([\d\s,]+(?:\.\d{1,2})?)/i,
+    /nett?\s+earnings\b[^\d]*?([\d\s,]+(?:\.\d{1,2})?)/i,
+    /nett?\s+amount\b[^\d]*?([\d\s,]+(?:\.\d{1,2})?)/i,
+    /take[- ]?home\s+pay\b[^\d]*?([\d\s,]+(?:\.\d{1,2})?)/i,
+    /take[- ]?home\b[^\d]*?([\d\s,]+(?:\.\d{1,2})?)/i,
+    /total\s+nett?\b[^\d]*?([\d\s,]+(?:\.\d{1,2})?)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const val = parseFloat(match[1].replace(/[\s,]/g, ""));
+      if (!isNaN(val) && val > 500 && val < 10_000_000) return val;
+    }
+  }
+  return null;
+}
+
+type Answers = Record<string, string>;
+type Errors = Record<string, string>;
+
+function validateAll(answers: Answers): Errors {
+  const errors: Errors = {};
+
+  if (!answers.first_name?.trim()) errors.first_name = "Required";
+  if (!answers.last_name?.trim()) errors.last_name = "Required";
+  if (!answers.gender) errors.gender = "Please select an option";
+  if (!answers.location) errors.location = "Please select your province";
+  if (!answers.city?.trim()) errors.city = "Please select or enter your city";
+
+  if (!answers.net_salary?.trim()) {
+    errors.net_salary = "Please upload your payslip to continue";
+  } else {
+    const val = parseCurrency(answers.net_salary);
+    if (isNaN(val) || val <= 0) errors.net_salary = "Salary could not be read — please try uploading again";
+  }
+
+  if (!answers.id_number?.trim()) {
+    errors.id_number = "Required";
+  } else {
+    const idErr = validateSaId(answers.id_number.trim());
+    if (idErr) errors.id_number = idErr;
+  }
+
+  for (const key of ["expenses_groceries", "expenses_accounts", "expenses_loans"] as const) {
+    if (!answers[key]?.trim()) {
+      errors[key] = "Required";
+    } else {
+      const val = parseCurrency(answers[key]);
+      if (isNaN(val) || val < 0) errors[key] = "Amount must be R 0 or more";
+    }
+  }
+  if (answers.expenses_other?.trim()) {
+    const val = parseCurrency(answers.expenses_other);
+    if (isNaN(val) || val < 0) errors.expenses_other = "Amount must be R 0 or more";
+  }
+
+  if (!answers.years_licenced) errors.years_licenced = "Please select an option";
+  else if (answers.id_number?.trim()) {
+    const age = extractAgeFromId(answers.id_number.trim());
+    const yrs = YEARS_LICENSED_MAP[answers.years_licenced] ?? 0;
+    if (age !== null && yrs > age) errors.years_licenced = "Years licensed exceeds your age";
+  }
+
+  return errors;
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
+  return (
+    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+      {children}
+      {required && <span className="text-red-400 ml-0.5">*</span>}
+    </label>
+  );
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="mt-1.5 text-xs text-red-500 flex items-center gap-1"><span>↳</span>{message}</p>;
+}
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 mb-6">
+      <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 whitespace-nowrap">
+        {children}
+      </span>
+      <div className="flex-1 h-px bg-gray-100" />
+    </div>
+  );
+}
+
+function TextInput({
+  value, onChange, placeholder, error, maxLength, inputMode,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  error?: string;
+  maxLength?: number;
+  inputMode?: React.InputHTMLAttributes<HTMLInputElement>["inputMode"];
+}) {
+  return (
+    <div>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        maxLength={maxLength}
+        inputMode={inputMode}
+        className={`w-full rounded-lg border px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 outline-none transition-colors focus:ring-2 focus:ring-gray-900/10 ${
+          error ? "border-red-300 focus:border-red-400" : "border-gray-200 focus:border-gray-400"
+        }`}
+      />
+      <FieldError message={error} />
+    </div>
+  );
+}
+
+function CurrencyInput({
+  value, onChange, placeholder, error,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  error?: string;
+}) {
+  return (
+    <div>
+      <div className={`flex items-center rounded-lg border transition-colors focus-within:ring-2 focus-within:ring-gray-900/10 ${
+        error ? "border-red-300 focus-within:border-red-400" : "border-gray-200 focus-within:border-gray-400"
+      }`}>
+        <span className="pl-3 pr-1.5 text-sm font-medium text-gray-400 select-none">R</span>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={value}
+          onChange={(e) => onChange(sanitizeCurrency(e.target.value))}
+          placeholder={placeholder ?? "0"}
+          className="flex-1 bg-transparent py-2.5 pr-3 text-sm text-gray-900 placeholder:text-gray-400 outline-none"
+        />
+      </div>
+      <FieldError message={error} />
+    </div>
+  );
+}
+
+function ChipGroup({
+  options, value, onChange, error,
+}: {
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (v: string) => void;
+  error?: string;
+}) {
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2">
+        {options.map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all duration-150 ${
+              value === opt.value
+                ? "border-gray-900 bg-gray-900 text-white"
+                : "border-gray-200 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50"
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      <FieldError message={error} />
+    </div>
+  );
+}
+
+function SelectInput({
+  options, value, onChange, placeholder, error, disabled,
+}: {
+  options: string[];
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  error?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        className={`w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-colors focus:ring-2 focus:ring-gray-900/10 disabled:opacity-40 disabled:cursor-not-allowed ${
+          value ? "text-gray-900" : "text-gray-400"
+        } ${error ? "border-red-300 focus:border-red-400" : "border-gray-200 focus:border-gray-400"}`}
+      >
+        <option value="">{placeholder ?? "Select…"}</option>
+        {options.map((opt) => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>
+      <FieldError message={error} />
+    </div>
+  );
+}
+
+function BrandMultiSelect({
+  value, onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const selected = value ? value.split(",").filter(Boolean) : [];
+
+  function toggle(brand: string) {
+    const lower = brand.toLowerCase();
+    const next = selected.includes(lower)
+      ? selected.filter((b) => b !== lower)
+      : [...selected, lower];
+    onChange(next.join(","));
+  }
+
+  const filtered = search.trim()
+    ? CAR_BRANDS.filter(
+        (b) =>
+          b.toLowerCase().includes(search.toLowerCase()) &&
+          !selected.includes(b.toLowerCase())
+      )
+    : [];
+
+  const showCustom =
+    search.trim().length > 0 &&
+    !CAR_BRANDS.some((b) => b.toLowerCase() === search.trim().toLowerCase());
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Selected tags */}
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {selected.map((val) => (
+            <span
+              key={val}
+              className="inline-flex items-center gap-1.5 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white"
+            >
+              {getBrandDisplayName(val)}
+              <button
+                type="button"
+                onClick={() => toggle(val)}
+                className="opacity-60 hover:opacity-100 transition-opacity"
+                aria-label={`Remove ${getBrandDisplayName(val)}`}
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Quick-pick chips */}
+      <div className="flex flex-wrap gap-2">
+        {QUICK_BRANDS.filter((b) => !selected.includes(b.toLowerCase())).map((brand) => (
+          <button
+            key={brand}
+            type="button"
+            onClick={() => toggle(brand)}
+            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-gray-400 hover:bg-gray-50 transition-all"
+          >
+            {brand}
+          </button>
+        ))}
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onBlur={() => setTimeout(() => setSearch(""), 150)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              const trimmed = search.trim();
+              if (!trimmed) return;
+              const match = CAR_BRANDS.find((b) => b.toLowerCase() === trimmed.toLowerCase());
+              const val = (match ?? trimmed).toLowerCase();
+              if (!selected.includes(val)) toggle(val);
+              setSearch("");
+            }
+            if (e.key === "Escape") setSearch("");
+          }}
+          placeholder="Search any brand…"
+          className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-900/10 transition-colors"
+        />
+        {(filtered.length > 0 || showCustom) && (
+          <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
+            {filtered.map((brand) => (
+              <button
+                key={brand}
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); toggle(brand); setSearch(""); }}
+                className="flex w-full items-center px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                {brand}
+              </button>
+            ))}
+            {showCustom && (
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  const val = search.trim().toLowerCase();
+                  if (!selected.includes(val)) toggle(val);
+                  setSearch("");
+                }}
+                className="flex w-full items-center gap-2 border-t border-gray-100 px-4 py-2.5 text-left text-sm text-blue-600 hover:bg-blue-50 transition-colors"
+              >
+                <span className="font-bold">+</span> Add &ldquo;{search.trim()}&rdquo;
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <p className="text-xs text-gray-400">Optional — select all that apply</p>
+    </div>
+  );
+}
+
+// ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function FormPage() {
   const router = useRouter();
-  const [step, setStep] = useState(0);
-  const [phase, setPhase] = useState<Phase>("visible");
-  const [direction, setDirection] = useState<Direction>("forward");
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Answers>({});
+  const [errors, setErrors] = useState<Errors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submissionError, setSubmissionError] = useState("");
-  const [showReview, setShowReview] = useState(false);
-  const [error, setError] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const otherInputRef = useRef<HTMLInputElement>(null);
-  const [brandSearch, setBrandSearch] = useState('');
+  const [submitError, setSubmitError] = useState("");
+  const firstErrorRef = useRef<HTMLDivElement>(null);
+  const payslipInputRef = useRef<HTMLInputElement>(null);
+  const [payslipStatus, setPayslipStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [payslipError, setPayslipError] = useState("");
+  const bankInputRef = useRef<HTMLInputElement>(null);
+  const [bankStatus, setBankStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [bankError, setBankError] = useState("");
 
-  const question = questions[step];
-  const isAnimating = phase !== "visible";
-  const progress = (step / questions.length) * 100;
+  function set(key: string, value: string) {
+    setAnswers((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === "location") next.city = "";
+      if (key === "id_number") {
+        const gender = extractGenderFromId(value);
+        if (gender) next.gender = gender;
+      }
+      return next;
+    });
+    if (errors[key]) setErrors((prev) => { const next = { ...prev }; delete next[key]; return next; });
+  }
 
-  const selectChoiceRef = useRef<(value: string) => void>(() => {});
-
-  useEffect(() => {
-    if (phase !== "visible") return;
-
-    if (
-      question.type === "text" ||
-      question.type === "email" ||
-      question.type === "tel"
-    ) {
-      const timeoutId = setTimeout(() => inputRef.current?.focus(), 50);
-      return () => clearTimeout(timeoutId);
+  async function handlePayslipUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      setPayslipStatus("error");
+      setPayslipError("Please upload a PDF file.");
+      return;
     }
-
-    if (question.type === "textarea") {
-      const timeoutId = setTimeout(() => textareaRef.current?.focus(), 50);
-      return () => clearTimeout(timeoutId);
+    setPayslipStatus("loading");
+    setPayslipError("");
+    try {
+      const { extractText } = await import("unpdf");
+      const buffer = await file.arrayBuffer();
+      const { text } = await extractText(new Uint8Array(buffer), { mergePages: true });
+      const salary = parseSalaryFromText(text);
+      if (salary !== null) {
+        set("net_salary", String(Math.round(salary)));
+        setPayslipStatus("success");
+      } else {
+        setPayslipStatus("error");
+        setPayslipError("Couldn't find net salary in this payslip. Please try a different file.");
+      }
+    } catch {
+      setPayslipStatus("error");
+      setPayslipError("Failed to read the PDF. Please try a different file.");
     }
-  }, [step, phase, question.type]);
+  }
 
-  useEffect(() => {
-    if (question.type !== "choice" || isAnimating) return;
+  async function handleBankUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      setBankStatus("error");
+      setBankError("Please upload a PDF file.");
+      return;
+    }
+    setBankStatus("loading");
+    setBankError("");
+    try {
+      const { extractText } = await import("unpdf");
+      const buffer = await file.arrayBuffer();
+      const { text } = await extractText(new Uint8Array(buffer), { mergePages: true });
 
-    function onKeyDown(event: KeyboardEvent) {
-      if (
-        event.target instanceof HTMLInputElement ||
-        event.target instanceof HTMLTextAreaElement
-      ) {
-        return;
+      let expenses: { groceries: number; accounts: number; loans: number; other: number } | null = null;
+
+      try {
+        expenses = await analyzeExpenses(text);
+      } catch {
+        // AI unavailable — fall back to regex parsing
+        expenses = parseBankStatementExpenses(text);
       }
 
-      if (!question.options) return;
-
-      const match = question.options.find(
-        (option) => option.key === event.key.toUpperCase(),
-      );
-
-      if (match) {
-        selectChoiceRef.current(match.value);
+      if (expenses !== null) {
+        set("expenses_groceries", String(expenses.groceries));
+        set("expenses_accounts", String(expenses.accounts));
+        set("expenses_loans", String(expenses.loans));
+        set("expenses_other", String(expenses.other));
+        setBankStatus("success");
+      } else {
+        setBankStatus("error");
+        setBankError("Couldn't find expenses in this statement. Please enter them manually.");
       }
+    } catch {
+      setBankStatus("error");
+      setBankError("Failed to read the PDF. Please enter your expenses manually.");
     }
+  }
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [question, isAnimating]);
-
-  // Stamp the initial history entry so the browser back button has a state to pop to
-  useEffect(() => {
-    window.history.replaceState({ formStep: 0 }, "");
-  }, []);
-
-  // Handle browser back button — pop state triggers backward animation
-  useEffect(() => {
-    function onPopState(event: PopStateEvent) {
-      const targetStep = typeof event.state?.formStep === "number" ? event.state.formStep : null;
-      if (targetStep === null || isAnimating || isSubmitting) return;
-
-      setError("");
-      setDirection("back");
-      setPhase("exiting");
-
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const validationErrors = validateAll(answers);
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      // Scroll to first error
       setTimeout(() => {
-        setStep(targetStep);
-        setPhase("pre-enter");
-
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            setPhase("entering");
-            setTimeout(() => setPhase("visible"), 420);
-          });
-        });
-      }, 260);
-    }
-
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, [isAnimating, isSubmitting]);
-
-  function animateTo(nextStep: number, dir: Direction) {
-    if (isAnimating) return;
-
-    if (dir === "forward") {
-      window.history.pushState({ formStep: nextStep }, "");
-    }
-
-    setDirection(dir);
-    setPhase("exiting");
-
-    setTimeout(() => {
-      setStep(nextStep);
-      setPhase("pre-enter");
-
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setPhase("entering");
-          setTimeout(() => setPhase("visible"), 420);
-        });
-      });
-    }, 260);
-  }
-
-  async function goNext(overrideAnswer?: string) {
-    if (isAnimating || isSubmitting) return;
-
-    const answer = overrideAnswer ?? answers[question.id] ?? "";
-    const validationError = validateStep(question, answer, answers);
-
-    if (validationError) {
-      setError(validationError);
+        const el = document.querySelector("[data-field-error]");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 50);
       return;
     }
 
-    setError("");
-
-    if (step === questions.length - 1) {
-      setShowReview(true);
-      return;
-    }
-
-    animateTo(step + 1, "forward");
-  }
-
-  function goBack() {
-    if (isAnimating || isSubmitting || step === 0) return;
-    setError("");
-    window.history.back();
-  }
-
-  async function handleSubmit() {
-    setSubmissionError("");
     setIsSubmitting(true);
+    setSubmitError("");
     try {
       const userId = sessionStorage.getItem("user_id") ?? undefined;
       const email = sessionStorage.getItem("user_email") ?? undefined;
+
+      // Step 1: save profile + credit score (no DB recommendations generated)
       const result = await submitQuestionnaire(answers, userId, email);
-      sessionStorage.setItem("recommendations", JSON.stringify(result.recommendations));
-      sessionStorage.setItem("result_source", result.source);
       sessionStorage.setItem("form_answers", JSON.stringify(answers));
       sessionStorage.setItem("credit_score", String(result.creditScore));
+
+      // Step 2: AI does a live search and returns recommendations
+      // Works for both logged-in users (userId) and guests (raw profile data)
+      const resolvedUserId = result.userId ?? userId;
+      const aiPayload = resolvedUserId
+        ? { userId: resolvedUserId }
+        : {
+            netSalary: parseCurrency(answers.net_salary ?? "0"),
+            creditScore: result.creditScore,
+            location: answers.location,
+            yearsLicensed: YEARS_LICENSED_MAP[answers.years_licenced] ?? undefined,
+          };
+
+      const rawRecs = await generateAiRecommendations(aiPayload);
+      // Ensure total always equals sum of components
+      const aiRecs = rawRecs.map((r) => {
+        const total = r.loanCost + r.insuranceCost + r.fuelCost + r.maintenanceCost;
+        return total > 0 ? { ...r, estimatedMonthlyCost: total } : r;
+      });
+      sessionStorage.setItem("recommendations", JSON.stringify(aiRecs));
+      sessionStorage.setItem("result_source", "ai");
+
       router.push("/dashboard");
     } catch (err) {
-      setSubmissionError(
-        err instanceof Error ? err.message : "Something went wrong. Please try again."
-      );
+      console.error('[Form submit error]', err);
+      setSubmitError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  function selectChoice(value: string) {
-    if (isAnimating || isSubmitting) return;
-
-    setAnswers((prev) => ({ ...prev, [question.id]: value }));
-    setError("");
-
-    if (step < questions.length - 1) {
-      setTimeout(() => animateTo(step + 1, "forward"), 350);
-      return;
-    }
-
-    setTimeout(() => {
-      void goNext(value);
-    }, 350);
-  }
-
-  selectChoiceRef.current = selectChoice;
-
-  function toggleMultiSelect(questionId: string, value: string) {
-    setAnswers((prev) => {
-      const current = (prev[questionId] ?? "").split(",").filter(Boolean);
-      const next = current.includes(value)
-        ? current.filter((v) => v !== value)
-        : [...current, value];
-      return { ...prev, [questionId]: next.join(",") };
-    });
-    if (error) setError("");
-  }
-
-  function handleInputKeyDown(
-    event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) {
-    if (question.type === "textarea") {
-      if (event.key === "Enter" && event.ctrlKey) {
-        event.preventDefault();
-        void goNext();
-      }
-      return;
-    }
-
-    if (event.key === "Enter") {
-      event.preventDefault();
-      void goNext();
-    }
-  }
-
-  function getStyle(): React.CSSProperties {
-    const isMovingForward = direction === "forward";
-
-    switch (phase) {
-      case "visible":
-        return {
-          transform: "translateY(0)",
-          opacity: 1,
-          transition:
-            "transform 0.4s cubic-bezier(0.25,1,0.5,1), opacity 0.3s ease",
-        };
-      case "exiting":
-        return {
-          transform: isMovingForward
-            ? "translateY(-55px)"
-            : "translateY(55px)",
-          opacity: 0,
-          transition: "transform 0.25s ease-in, opacity 0.25s ease-in",
-          pointerEvents: "none",
-        };
-      case "pre-enter":
-        return {
-          transform: isMovingForward
-            ? "translateY(55px)"
-            : "translateY(-55px)",
-          opacity: 0,
-          transition: "none",
-          pointerEvents: "none",
-        };
-      case "entering":
-        return {
-          transform: "translateY(0)",
-          opacity: 1,
-          transition:
-            "transform 0.4s cubic-bezier(0.25,1,0.5,1), opacity 0.3s ease",
-          pointerEvents: "none",
-        };
-    }
-  }
-
-  const showContinueButton =
-    question.type !== "choice" ||
-    (question.allowOther &&
-      !question.options?.some((o) => o.value === answers[question.id]) &&
-      (answers[question.id] ?? "").trim() !== "");
+  const citiesForProvince = SA_PROVINCE_CITIES[answers.location ?? ""] ?? [];
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-white text-gray-900">
-      {/* Progress bar */}
-      <div className="fixed left-0 right-0 top-0 z-50 h-1 bg-gray-200">
-        <div
-          className="h-full bg-blue-500 transition-all duration-500 ease-out"
-          style={{ width: showReview ? "100%" : `${progress}%` }}
-        />
-      </div>
-
-      {/* Full-screen loading overlay */}
+    <div className="min-h-screen bg-white">
+      {/* Loading overlay */}
       {isSubmitting && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/90 backdrop-blur-sm gap-5">
-          <div className="h-12 w-12 rounded-full border-4 border-blue-200 border-t-blue-500 animate-spin" />
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/90 backdrop-blur-sm gap-4">
+          <div className="h-10 w-10 rounded-full border-[3px] border-gray-200 border-t-gray-900 animate-spin" />
           <div className="text-center">
-            <p className="text-base font-semibold text-gray-800">Analysing your profile…</p>
-            <p className="mt-1 text-sm text-gray-500">Finding the best cars for your budget</p>
+            <p className="text-sm font-semibold text-gray-900">Finding your perfect car…</p>
+            <p className="mt-0.5 text-xs text-gray-500">Searching the internet for real listings and insurance quotes</p>
           </div>
         </div>
       )}
 
-      {showReview ? (
-        /* ── Review screen ── */
-        <div className="flex flex-1 items-start justify-center px-6 py-16">
-          <div className="w-full max-w-xl">
-            <p className="mb-2 text-sm font-semibold uppercase tracking-widest text-blue-500">
-              Almost done
-            </p>
-            <h2 className="text-2xl font-semibold text-gray-900 sm:text-3xl">
-              Review your answers
-            </h2>
-            <p className="mt-2 text-gray-500">
-              Make sure everything looks correct before we find your best cars.
-            </p>
-
-            <dl className="mt-8 divide-y divide-gray-100 rounded-2xl border border-gray-200 bg-white overflow-hidden">
-              {REVIEW_FIELDS.map(({ id, label, format }) => {
-                const raw = answers[id] ?? "";
-                if (!raw && id !== "preferred_brand") return null;
-                return (
-                  <div key={id} className="flex items-baseline justify-between gap-4 px-5 py-3.5">
-                    <dt className="text-sm text-gray-500 shrink-0">{label}</dt>
-                    <dd className="text-sm font-medium text-gray-900 text-right">{format(raw)}</dd>
-                  </div>
-                );
-              })}
-            </dl>
-
-            {submissionError && (
-              <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-                {submissionError}
-              </p>
-            )}
-
-            <div className="mt-6 flex items-center gap-3">
-              <button
-                onClick={() => { setShowReview(false); setSubmissionError(""); }}
-                disabled={isSubmitting}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
-              >
-                ← Edit answers
-              </button>
-              <button
-                onClick={() => void handleSubmit()}
-                disabled={isSubmitting}
-                className="flex items-center gap-2 rounded-lg bg-blue-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-600 active:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? "Submitting…" : "Confirm & submit"}
-                {!isSubmitting && <span>→</span>}
-              </button>
-            </div>
-
-            <p className="mt-3 text-xs text-gray-400">
-              {isUsingMockData() ? "Mock data mode is enabled." : "Submitting to the live backend."}
-            </p>
-          </div>
+      {/* Nav */}
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white/95 backdrop-blur-sm px-6 py-3">
+        <button
+          type="button"
+          onClick={() => router.push("/")}
+          className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Back
+        </button>
+        <div className="flex items-center gap-2">
+          <svg width="20" height="20" viewBox="0 0 28 28" fill="none">
+            <circle cx="14" cy="14" r="14" fill="#111827"/>
+            <path d="M7 16 C7.5 13 9 11.5 11 11 L17 11 C19 11.5 20.5 13 21 16 Z" fill="white"/>
+            <rect x="6" y="16" width="16" height="4" rx="2" fill="white"/>
+            <circle cx="10" cy="20.5" r="2" fill="#111827"/>
+            <circle cx="18" cy="20.5" r="2" fill="#111827"/>
+          </svg>
+          <span className="text-sm font-semibold text-gray-900">FirstCar</span>
         </div>
-      ) : (
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard")}
+          className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
+        >
+          Skip →
+        </button>
+      </header>
 
-      <div className="flex flex-1 items-center justify-center px-6 py-20">
-        <div className="w-full max-w-xl" style={getStyle()}>
-          <p className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-gray-400">
-            <span>{question.number}</span>
-            <span className="text-gray-300">→</span>
-          </p>
+      {/* Form */}
+      <form onSubmit={handleSubmit} noValidate>
+        <div className="mx-auto max-w-2xl px-6 py-12">
 
-          <h2 className="text-2xl font-semibold leading-snug text-gray-900 sm:text-3xl">
-            {question.label}
-            {question.required && <span className="ml-1 text-blue-500">*</span>}
-          </h2>
+          {/* Page heading */}
+          <div className="mb-12">
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Find your first car</h1>
+            <p className="mt-2 text-gray-500 text-sm">
+              Tell us about yourself and we&apos;ll match you with cars that fit your budget and lifestyle.
+            </p>
+            {isUsingMockData() && (
+              <span className="mt-3 inline-block rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-xs font-medium text-amber-700">
+                Mock data mode
+              </span>
+            )}
+          </div>
 
-          {question.description && (
-            <p className="mt-2 text-gray-500">{question.description}</p>
-          )}
+          <div className="space-y-12">
 
-          <div className="mt-8">
-            {question.type === "select" ? (
-              <div className="flex flex-col gap-3">
-                {question.id === "city" && !answers.location && (
-                  <p className="text-sm text-amber-600">Please go back and select your province first.</p>
-                )}
-                <select
-                  value={
-                    question.id === "city" &&
-                    !(SA_PROVINCE_CITIES[answers.location ?? ""] ?? []).some(
-                      (o) => o.value === answers.city
-                    )
-                      ? ""
-                      : answers[question.id] ?? ""
-                  }
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setAnswers((prev) => {
-                      const next = { ...prev, [question.id]: val };
-                      // clear city if province changes
-                      if (question.id === "location") next.city = "";
-                      return next;
-                    });
-                    if (error) setError("");
-                  }}
-                  disabled={question.id === "city" && !answers.location}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-base text-gray-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <option value="">
-                    {question.id === "city" ? "Select your city..." : "Select your province..."}
-                  </option>
-                  {(question.id === "city"
-                    ? SA_PROVINCE_CITIES[answers.location ?? ""] ?? []
-                    : question.selectOptions ?? []
-                  ).map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+            {/* ── About you ── */}
+            <section>
+              <SectionHeading>About you</SectionHeading>
+              <div className="space-y-5">
+                <div className="grid grid-cols-2 gap-4">
+                  <div data-field-error={errors.first_name ? "" : undefined}>
+                    <FieldLabel required>First name</FieldLabel>
+                    <TextInput
+                      value={answers.first_name ?? ""}
+                      onChange={(v) => set("first_name", v)}
+                      placeholder="Thabo"
+                      error={errors.first_name}
+                    />
+                  </div>
+                  <div data-field-error={errors.last_name ? "" : undefined}>
+                    <FieldLabel required>Last name</FieldLabel>
+                    <TextInput
+                      value={answers.last_name ?? ""}
+                      onChange={(v) => set("last_name", v)}
+                      placeholder="Nkosi"
+                      error={errors.last_name}
+                    />
+                  </div>
+                </div>
+              </div>
+            </section>
 
-                {question.id === "city" && answers.location && (
-                  <div className="flex flex-col gap-1">
-                    <p className="text-xs text-gray-400">
-                      Can&apos;t find your city? Type it below.
-                    </p>
-                    <input
-                      type="text"
-                      placeholder="e.g. Alberton, Midrand, Soweto..."
-                      value={
-                        (SA_PROVINCE_CITIES[answers.location ?? ""] ?? []).some(
-                          (o) => o.value === answers.city
-                        )
-                          ? ""
-                          : (answers.city ?? "")
-                      }
-                      onChange={(e) => {
-                        setAnswers((prev) => ({ ...prev, city: e.target.value }));
-                        if (error) setError("");
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          void goNext();
-                        }
-                      }}
-                      className="w-full border-b-2 border-gray-300 bg-transparent py-2 text-base text-gray-900 placeholder:text-gray-400 outline-none transition-colors focus:border-blue-500"
+            {/* ── Location ── */}
+            <section>
+              <SectionHeading>Location</SectionHeading>
+              <div className="grid grid-cols-2 gap-4">
+                <div data-field-error={errors.location ? "" : undefined}>
+                  <FieldLabel required>Province</FieldLabel>
+                  <SelectInput
+                    options={SA_PROVINCES}
+                    value={answers.location ?? ""}
+                    onChange={(v) => set("location", v)}
+                    placeholder="Select province…"
+                    error={errors.location}
+                  />
+                </div>
+                <div data-field-error={errors.city ? "" : undefined}>
+                  <FieldLabel required>City</FieldLabel>
+                  {citiesForProvince.length > 0 ? (
+                    <div>
+                      <SelectInput
+                        options={citiesForProvince}
+                        value={citiesForProvince.includes(answers.city ?? "") ? (answers.city ?? "") : ""}
+                        onChange={(v) => set("city", v)}
+                        placeholder="Select city…"
+                        disabled={!answers.location}
+                        error={!citiesForProvince.includes(answers.city ?? "") ? undefined : errors.city}
+                      />
+                      {answers.location && (
+                        <div className="mt-2">
+                          <input
+                            type="text"
+                            value={citiesForProvince.includes(answers.city ?? "") ? "" : (answers.city ?? "")}
+                            onChange={(e) => set("city", e.target.value)}
+                            placeholder="Or type your city…"
+                            className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-900/10 transition-colors"
+                          />
+                        </div>
+                      )}
+                      <FieldError message={errors.city} />
+                    </div>
+                  ) : (
+                    <div>
+                      <TextInput
+                        value={answers.city ?? ""}
+                        onChange={(v) => set("city", v)}
+                        placeholder={answers.location ? "Type your city…" : "Select province first"}
+                        error={errors.city}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* ── Finances ── */}
+            <section>
+              <SectionHeading>Finances</SectionHeading>
+              <div className="space-y-5">
+                <div data-field-error={errors.id_number ? "" : undefined}>
+                  <FieldLabel required>South African ID number</FieldLabel>
+                  <p className="text-xs text-gray-400 mb-1.5">Used to determine your credit score securely</p>
+                  <TextInput
+                    value={answers.id_number ?? ""}
+                    onChange={(v) => set("id_number", v.replace(/\D/g, "").slice(0, 13))}
+                    placeholder="9001015009087"
+                    error={errors.id_number}
+                    maxLength={13}
+                    inputMode="numeric"
+                  />
+                </div>
+
+                {(answers.id_number ?? "").length >= 10 && answers.gender && (
+                  <div data-field-error={errors.gender ? "" : undefined}>
+                    <FieldLabel required>Gender</FieldLabel>
+                    <ChipGroup
+                      options={[
+                        { value: "male", label: "Male" },
+                        { value: "female", label: "Female" },
+                      ].filter((opt) => opt.value === answers.gender)}
+                      value={answers.gender}
+                      onChange={(v) => set("gender", v)}
+                      error={errors.gender}
                     />
                   </div>
                 )}
-              </div>
-            ) : question.type === "multi-select" && question.options ? (
-              <div className="flex flex-col gap-4">
-                {/* Selected brand tags */}
-                {(answers[question.id] ?? "").split(",").filter(Boolean).length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {(answers[question.id] ?? "").split(",").filter(Boolean).map((val) => (
-                      <span
-                        key={val}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700"
-                      >
-                        {getBrandLabel(val, question.options)}
-                        <button
-                          type="button"
-                          onClick={() => toggleMultiSelect(question.id, val)}
-                          className="flex h-4 w-4 items-center justify-center rounded-full text-blue-500 hover:bg-blue-200 transition-colors text-xs"
-                          aria-label={`Remove ${getBrandLabel(val, question.options)}`}
-                        >
-                          ✕
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
 
-                {/* Quick-select grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {question.options.map((option) => {
-                    const isSelected = (answers[question.id] ?? "").split(",").filter(Boolean).includes(option.value);
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => toggleMultiSelect(question.id, option.value)}
-                        className={`flex items-center gap-2.5 rounded-lg border px-4 py-3 text-left text-sm font-medium transition-all duration-150 ${
-                          isSelected
-                            ? "border-blue-500 bg-blue-50 text-blue-700"
-                            : "border-gray-200 bg-gray-50 text-gray-700 hover:border-gray-300 hover:bg-gray-100"
-                        }`}
-                      >
-                        <span
-                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs font-bold transition-colors ${
-                            isSelected
-                              ? "border-blue-500 bg-blue-500 text-white"
-                              : "border-gray-300 text-gray-400"
-                          }`}
-                        >
-                          {isSelected ? "✓" : ""}
-                        </span>
-                        <span>{option.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Search / custom brand input */}
-                <div className="relative">
+                <div data-field-error={errors.net_salary ? "" : undefined}>
+                  <FieldLabel required>Monthly net salary</FieldLabel>
+                  <p className="text-xs text-gray-400 mb-2">Your take-home pay after tax (20% becomes your car budget)</p>
                   <input
-                    type="text"
-                    value={brandSearch}
-                    onChange={(e) => setBrandSearch(e.target.value)}
-                    onBlur={() => setTimeout(() => setBrandSearch(""), 150)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        const trimmed = brandSearch.trim();
-                        if (!trimmed) return;
-                        const match = CAR_BRANDS.find(
-                          (b) => b.toLowerCase() === trimmed.toLowerCase(),
-                        );
-                        const val = (match ?? trimmed).toLowerCase();
-                        if (!(answers[question.id] ?? "").split(",").filter(Boolean).includes(val)) {
-                          toggleMultiSelect(question.id, val);
-                        }
-                        setBrandSearch("");
-                      }
-                      if (e.key === "Escape") setBrandSearch("");
-                    }}
-                    placeholder="Search or type any brand..."
-                    className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    ref={payslipInputRef}
+                    type="file"
+                    accept="application/pdf"
+                    className="hidden"
+                    onChange={handlePayslipUpload}
                   />
-
-                  {brandSearch.trim() && (() => {
-                    const alreadySelected = (answers[question.id] ?? "").split(",").filter(Boolean);
-                    const filtered = CAR_BRANDS.filter(
-                      (b) =>
-                        b.toLowerCase().includes(brandSearch.toLowerCase()) &&
-                        !alreadySelected.includes(b.toLowerCase()),
-                    );
-                    const showCustom =
-                      brandSearch.trim().length > 0 &&
-                      !CAR_BRANDS.some(
-                        (b) => b.toLowerCase() === brandSearch.trim().toLowerCase(),
-                      );
-
-                    if (!filtered.length && !showCustom) return null;
-
-                    return (
-                      <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
-                        {filtered.map((brand) => (
-                          <button
-                            key={brand}
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              toggleMultiSelect(question.id, brand.toLowerCase());
-                              setBrandSearch("");
-                            }}
-                            className="flex w-full items-center px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-blue-50 hover:text-blue-700"
-                          >
-                            {brand}
-                          </button>
-                        ))}
-                        {showCustom && (
-                          <button
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              const val = brandSearch.trim().toLowerCase();
-                              if (!alreadySelected.includes(val)) {
-                                toggleMultiSelect(question.id, val);
-                              }
-                              setBrandSearch("");
-                            }}
-                            className="flex w-full items-center gap-2 border-t border-gray-100 px-4 py-2.5 text-left text-sm text-blue-600 transition-colors hover:bg-blue-50"
-                          >
-                            <span className="font-bold">+</span> Add &ldquo;{brandSearch.trim()}&rdquo;
-                          </button>
-                        )}
+                  {payslipStatus === "success" && answers.net_salary ? (
+                    <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-3 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-green-600 shrink-0"><circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/><path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        <span className="text-sm font-semibold text-green-800">
+                          R {Number(answers.net_salary).toLocaleString("en-ZA")}
+                        </span>
+                        <span className="text-xs text-green-600">extracted from payslip</span>
                       </div>
-                    );
-                  })()}
-                </div>
-
-                <p className="text-xs text-gray-400">
-                  Optional — select all that apply, or skip to continue
-                </p>
-              </div>
-            ) : question.type === "choice" && question.options ? (
-              <div className="flex flex-col gap-2.5">
-                {question.options.map((option) => {
-                  const selected = answers[question.id] === option.value;
-
-                  return (
+                      <button
+                        type="button"
+                        onClick={() => { set("net_salary", ""); setPayslipStatus("idle"); setPayslipError(""); }}
+                        className="text-xs text-green-600 hover:text-green-800 underline underline-offset-2 transition-colors"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
                     <button
-                      key={option.value}
-                      onClick={() => selectChoice(option.value)}
-                      className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-left text-sm font-medium transition-all duration-150 ${
-                        selected
-                          ? "border-blue-500 bg-blue-50 text-blue-700"
-                          : "border-gray-200 bg-gray-50 text-gray-700 hover:border-gray-300 hover:bg-gray-100"
+                      type="button"
+                      onClick={() => payslipInputRef.current?.click()}
+                      disabled={payslipStatus === "loading"}
+                      className={`w-full rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                        errors.net_salary
+                          ? "border-red-300 hover:border-red-400"
+                          : "border-gray-200 hover:border-gray-400"
                       }`}
                     >
-                      <span
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded border text-xs font-bold transition-colors ${
-                          selected
-                            ? "border-blue-500 bg-blue-500 text-white"
-                            : "border-gray-300 text-gray-400"
-                        }`}
-                      >
-                        {option.key}
-                      </span>
-                      <span>{option.label}</span>
+                      {payslipStatus === "loading" ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <svg className="animate-spin h-5 w-5 text-gray-400" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                          </svg>
+                          <span className="text-sm text-gray-500">Reading payslip…</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <svg width="20" height="20" viewBox="0 0 16 16" fill="none" className="text-gray-400">
+                            <path d="M2 12v2h12v-2M8 2v8M5 5l3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          <div>
+                            <p className={`text-sm font-medium ${errors.net_salary ? "text-red-500" : "text-gray-600"}`}>
+                              Upload your payslip PDF
+                            </p>
+                            <p className="text-xs text-gray-400 mt-0.5">We'll extract your net salary automatically</p>
+                          </div>
+                        </div>
+                      )}
                     </button>
-                  );
-                })}
+                  )}
+                  {payslipStatus === "error" && payslipError && (
+                    <p className="mt-1.5 text-xs text-amber-600 flex items-center gap-1">
+                      <span>↳</span>{payslipError}
+                    </p>
+                  )}
+                  {errors.net_salary && payslipStatus !== "error" && (
+                    <FieldError message={errors.net_salary} />
+                  )}
+                </div>
 
-                {question.allowOther && (
-                  <div className="mt-1 flex flex-col gap-1.5">
-                    <label className="text-xs text-gray-400">
-                      Or type your own
-                    </label>
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-medium text-gray-700">Monthly expenses</p>
+                    <button
+                      type="button"
+                      onClick={() => bankInputRef.current?.click()}
+                      disabled={bankStatus === "loading"}
+                      className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-500 hover:border-gray-400 hover:text-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {bankStatus === "loading" ? (
+                        <>
+                          <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                          </svg>
+                          Reading…
+                        </>
+                      ) : (
+                        <>
+                          <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                            <path d="M2 12v2h12v-2M8 2v8M5 5l3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          Upload bank statement
+                        </>
+                      )}
+                    </button>
                     <input
-                      ref={otherInputRef}
-                      type="text"
-                      placeholder="e.g. BMW, Audi, Mercedes..."
-                      value={
-                        question.options.some(
-                          (option) => option.value === answers[question.id],
-                        )
-                          ? ""
-                          : (answers[question.id] ?? "")
-                      }
-                      onChange={(event) => {
-                        setAnswers((prev) => ({
-                          ...prev,
-                          [question.id]: event.target.value,
-                        }));
-                        if (error) setError("");
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          void goNext();
-                        }
-                      }}
-                      className="w-full border-b-2 border-gray-300 bg-transparent py-2 text-base text-gray-900 placeholder:text-gray-400 outline-none transition-colors focus:border-blue-500"
+                      ref={bankInputRef}
+                      type="file"
+                      accept="application/pdf"
+                      className="hidden"
+                      onChange={handleBankUpload}
                     />
                   </div>
-                )}
+
+                  {bankStatus === "error" && bankError && (
+                    <p className="mb-3 text-xs text-amber-600 flex items-center gap-1">
+                      <span>↳</span>{bankError}
+                    </p>
+                  )}
+
+                  {bankStatus === "success" ? (
+                    <div className="rounded-lg border border-green-200 bg-green-50 overflow-hidden">
+                      {[
+                        { label: "Groceries",          key: "expenses_groceries" },
+                        { label: "Accounts",           key: "expenses_accounts" },
+                        { label: "Loans / credit cards", key: "expenses_loans" },
+                        { label: "Other expenses",     key: "expenses_other" },
+                      ].map(({ label, key }, i, arr) => (
+                        <div
+                          key={key}
+                          className={`flex items-center justify-between px-4 py-2.5 ${i < arr.length - 1 ? "border-b border-green-100" : ""}`}
+                        >
+                          <span className="text-xs text-green-700">{label}</span>
+                          <span className="text-sm font-semibold text-green-800">
+                            R {Number(answers[key] ?? 0).toLocaleString("en-ZA")}
+                          </span>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between px-4 py-2 border-t border-green-200 bg-green-100/50">
+                        <div className="flex items-center gap-1.5">
+                          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" className="text-green-600"><circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/><path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          <span className="text-xs text-green-600">Extracted from bank statement</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            set("expenses_groceries", "");
+                            set("expenses_accounts", "");
+                            set("expenses_loans", "");
+                            set("expenses_other", "");
+                            setBankStatus("idle");
+                            setBankError("");
+                          }}
+                          className="text-xs text-green-600 hover:text-green-800 underline underline-offset-2 transition-colors"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div data-field-error={errors.expenses_groceries ? "" : undefined}>
+                        <FieldLabel required>Groceries</FieldLabel>
+                        <CurrencyInput
+                          value={answers.expenses_groceries ?? ""}
+                          onChange={(v) => set("expenses_groceries", v)}
+                          placeholder="3 000"
+                          error={errors.expenses_groceries}
+                        />
+                      </div>
+                      <div data-field-error={errors.expenses_accounts ? "" : undefined}>
+                        <FieldLabel required>Accounts</FieldLabel>
+                        <CurrencyInput
+                          value={answers.expenses_accounts ?? ""}
+                          onChange={(v) => set("expenses_accounts", v)}
+                          placeholder="1 500"
+                          error={errors.expenses_accounts}
+                        />
+                      </div>
+                      <div data-field-error={errors.expenses_loans ? "" : undefined}>
+                        <FieldLabel required>Loans / credit cards</FieldLabel>
+                        <CurrencyInput
+                          value={answers.expenses_loans ?? ""}
+                          onChange={(v) => set("expenses_loans", v)}
+                          placeholder="2 000"
+                          error={errors.expenses_loans}
+                        />
+                      </div>
+                      <div data-field-error={errors.expenses_other ? "" : undefined}>
+                        <FieldLabel>Other expenses</FieldLabel>
+                        <CurrencyInput
+                          value={answers.expenses_other ?? ""}
+                          onChange={(v) => set("expenses_other", v)}
+                          placeholder="500"
+                          error={errors.expenses_other}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-            ) : question.type === "textarea" ? (
-              <textarea
-                ref={textareaRef}
-                value={answers[question.id] ?? ""}
-                onChange={(event) => {
-                  setAnswers((prev) => ({
-                    ...prev,
-                    [question.id]: event.target.value,
-                  }));
-                  if (error) setError("");
-                }}
-                onKeyDown={handleInputKeyDown}
-                placeholder={question.placeholder}
-                rows={4}
-                className="w-full resize-none border-b-2 border-gray-300 bg-transparent py-3 text-xl text-gray-900 placeholder:text-gray-400 outline-none transition-colors focus:border-blue-500"
-              />
-            ) : (
-              <div className={CURRENCY_FIELDS.has(question.id) ? "flex items-baseline gap-1" : undefined}>
-                {CURRENCY_FIELDS.has(question.id) && (
-                  <span className="text-xl font-medium text-gray-400 select-none">R</span>
-                )}
-                <input
-                  ref={inputRef}
-                  type={question.type}
-                  inputMode={CURRENCY_FIELDS.has(question.id) ? "decimal" : undefined}
-                  value={answers[question.id] ?? ""}
-                  onChange={(event) => {
-                    const raw = event.target.value;
-                    const cleaned = CURRENCY_FIELDS.has(question.id)
-                      ? sanitizeCurrencyInput(raw)
-                      : raw;
-                    setAnswers((prev) => ({ ...prev, [question.id]: cleaned }));
-                    if (error) setError("");
-                  }}
-                  onKeyDown={handleInputKeyDown}
-                  placeholder={CURRENCY_FIELDS.has(question.id) ? question.placeholder?.replace(/^R\s?/, "") : question.placeholder}
-                  maxLength={question.id === "id_number" ? 13 : undefined}
-                  className="w-full border-b-2 border-gray-300 bg-transparent py-3 text-xl text-gray-900 placeholder:text-gray-400 outline-none transition-colors focus:border-blue-500"
+            </section>
+
+            {/* ── Driving experience ── */}
+            <section>
+              <SectionHeading>Driving experience</SectionHeading>
+              <div data-field-error={errors.years_licenced ? "" : undefined}>
+                <FieldLabel required>How long have you been licensed?</FieldLabel>
+                <ChipGroup
+                  options={[
+                    { value: "less-than-1", label: "Less than 1 year" },
+                    { value: "1-3", label: "1 – 3 years" },
+                    { value: "3-5", label: "3 – 5 years" },
+                    { value: "5-plus", label: "5+ years" },
+                  ]}
+                  value={answers.years_licenced ?? ""}
+                  onChange={(v) => set("years_licenced", v)}
+                  error={errors.years_licenced}
                 />
               </div>
-            )}
+            </section>
 
-            {error && (
-              <p className="mt-3 flex items-center gap-1.5 text-sm text-red-500">
-                <span>⚠</span> {error}
-              </p>
-            )}
 
           </div>
 
-          {(showContinueButton || question.type === "select") && (
-            <div className="mt-7 flex items-center gap-4">
+          {/* Submit */}
+          <div className="mt-12 pt-8 border-t border-gray-100">
+            {submitError && (
+              <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {submitError}
+              </div>
+            )}
+            {Object.keys(errors).length > 0 && (
+              <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                Please fix the highlighted fields above before continuing.
+              </div>
+            )}
+            <div className="flex items-center justify-between">
               <button
-                onClick={() => void goNext()}
+                type="submit"
                 disabled={isSubmitting}
-                className="flex items-center gap-2 rounded-lg bg-blue-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-600 active:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex items-center gap-2 rounded-xl bg-gray-900 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-gray-800 active:bg-gray-950 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {step === questions.length - 1 ? "Review →" : "OK"}
-                {step < questions.length - 1 && <span>✓</span>}
+                {isSubmitting ? "Analysing…" : "Find my cars"}
+                {!isSubmitting && (
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
               </button>
-              <span className="text-xs text-gray-400">
-                press{" "}
-                <kbd className="rounded border border-gray-300 px-1.5 py-0.5 font-mono text-gray-500">
-                  {question.type === "textarea" ? "Ctrl+Enter" : "Enter ↵"}
-                </kbd>
-              </span>
             </div>
-          )}
+          </div>
+
         </div>
-      </div>
-
-      )} {/* end review/question conditional */}
-
-      {!showReview && (
-        <>
-          <div className="fixed bottom-6 left-6 flex items-center gap-3">
-            <span className="text-xs text-gray-400">
-              {step + 1} / {questions.length}
-            </span>
-            <button
-              onClick={() => router.push("/dashboard")}
-              className="text-xs text-gray-400 underline underline-offset-2 hover:text-gray-600 transition-colors"
-            >
-              Go to dashboard
-            </button>
-          </div>
-
-          <div className="fixed bottom-6 right-6 flex gap-2">
-            <button
-              onClick={goBack}
-              disabled={step === 0 || isAnimating || isSubmitting}
-              aria-label="Previous question"
-              className="flex h-9 w-9 items-center justify-center rounded border border-gray-300 text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-30"
-            >
-              ↑
-            </button>
-            <button
-              onClick={() => void goNext()}
-              disabled={isAnimating || isSubmitting}
-              aria-label="Next question"
-              className="flex h-9 w-9 items-center justify-center rounded border border-gray-300 text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-30"
-            >
-              ↓
-            </button>
-          </div>
-        </>
-      )}
+      </form>
     </div>
   );
 }

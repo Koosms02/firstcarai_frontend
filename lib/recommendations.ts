@@ -10,6 +10,12 @@ export type RecommendationCar = {
   imageUrl: string | null;
 };
 
+export type RecommendationDealer = {
+  name: string;
+  location: string;
+  reputationNote: string;
+};
+
 export type Recommendation = {
   id: string;
   estimatedMonthlyCost: number;
@@ -19,6 +25,7 @@ export type Recommendation = {
   fuelCost: number;
   score: number;
   car: RecommendationCar;
+  dealer?: RecommendationDealer | null;
 };
 
 export type QuestionnaireAnswers = Record<string, string>;
@@ -63,68 +70,6 @@ const YEARS_LICENSED_MAP: Record<string, number> = {
   '5-plus': 6,
 };
 
-const MOCK_RECOMMENDATIONS: Recommendation[] = [
-  {
-    id: 'mock-vw-polo',
-    estimatedMonthlyCost: 5420,
-    insuranceCost: 980,
-    loanCost: 3140,
-    maintenanceCost: 700,
-    fuelCost: 600,
-    score: 0.91,
-    car: {
-      id: 'car-vw-polo',
-      make: 'Volkswagen',
-      model: 'Polo 1.0 TSI Life',
-      year: 2021,
-      price: 214900,
-      fuelType: 'petrol',
-      transmission: 'automatic',
-      mileage: 48200,
-      imageUrl: 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800&auto=format&fit=crop&q=70',
-    },
-  },
-  {
-    id: 'mock-toyota-starlet',
-    estimatedMonthlyCost: 4985,
-    insuranceCost: 910,
-    loanCost: 2875,
-    maintenanceCost: 650,
-    fuelCost: 550,
-    score: 0.88,
-    car: {
-      id: 'car-toyota-starlet',
-      make: 'Toyota',
-      model: 'Starlet XR',
-      year: 2022,
-      price: 196500,
-      fuelType: 'petrol',
-      transmission: 'manual',
-      mileage: 35100,
-      imageUrl: 'https://images.unsplash.com/photo-1553440569-bcc63803a83d?w=800&auto=format&fit=crop&q=70',
-    },
-  },
-  {
-    id: 'mock-hyundai-i20',
-    estimatedMonthlyCost: 5210,
-    insuranceCost: 950,
-    loanCost: 3010,
-    maintenanceCost: 650,
-    fuelCost: 600,
-    score: 0.84,
-    car: {
-      id: 'car-hyundai-i20',
-      make: 'Hyundai',
-      model: 'i20 Fluid',
-      year: 2021,
-      price: 205000,
-      fuelType: 'petrol',
-      transmission: 'automatic',
-      mileage: 42800,
-      imageUrl: 'https://images.unsplash.com/photo-1600712242805-5f78671b24da?w=800&auto=format&fit=crop&q=70',
-    },
-  },
-];
 
 function parseCurrency(value: string) {
   if (!value) return 0;
@@ -219,44 +164,6 @@ function buildPreferencesPayload(
   };
 }
 
-function getMockRecommendations(answers: QuestionnaireAnswers) {
-  const preferredBrands = answers.preferred_brand
-    ? answers.preferred_brand.split(',').map((b) => b.trim().toLowerCase()).filter(Boolean)
-    : [];
-  const transmission = answers.transmission?.toLowerCase();
-  const fuelType = answers.fuel_type?.toLowerCase();
-
-  return [...MOCK_RECOMMENDATIONS]
-    .map((recommendation) => {
-      let score = recommendation.score;
-
-      if (
-        preferredBrands.length > 0 &&
-        preferredBrands.some((brand) =>
-          recommendation.car.make.toLowerCase().includes(brand),
-        )
-      ) {
-        score += 0.04;
-      }
-
-      if (
-        transmission &&
-        recommendation.car.transmission?.toLowerCase() === transmission
-      ) {
-        score += 0.03;
-      }
-
-      if (fuelType && recommendation.car.fuelType?.toLowerCase() === fuelType) {
-        score += 0.02;
-      }
-
-      return {
-        ...recommendation,
-        score: Number(score.toFixed(2)),
-      };
-    })
-    .sort((left, right) => right.score - left.score);
-}
 
 export async function signup(payload: SignupPayload): Promise<{ id: string; email: string }> {
   if (USE_MOCK_DATA) {
@@ -295,15 +202,14 @@ export async function submitQuestionnaire(
 ) {
   if (USE_MOCK_DATA) {
     await new Promise((resolve) => setTimeout(resolve, 500));
-    
-    // Simulate mock credit score based on user input
+
     const income = parseCurrency(answers.net_salary || '0');
-    const totalExpenses = 
+    const totalExpenses =
       parseCurrency(answers.expenses_groceries || '0') +
       parseCurrency(answers.expenses_accounts || '0') +
       parseCurrency(answers.expenses_loans || '0') +
       parseCurrency(answers.expenses_other || '0');
-    
+
     const dti = income > 0 ? totalExpenses / income : 1;
     let mockCreditScore = 650;
     if (dti < 0.2) mockCreditScore = 750;
@@ -312,15 +218,11 @@ export async function submitQuestionnaire(
     else if (dti < 0.8) mockCreditScore = 600;
     else mockCreditScore = 500;
 
-    if (email) {
-      const upsertPayload = buildUpsertUserPayload(email, answers, mockCreditScore);
-      console.log("Mock submission payload:", upsertPayload);
-    }
-
     return {
       source: 'mock' as const,
-      recommendations: getMockRecommendations(answers),
+      recommendations: [] as Recommendation[],
       creditScore: mockCreditScore,
+      userId: undefined as string | undefined,
     };
   }
 
@@ -359,38 +261,11 @@ export async function submitQuestionnaire(
     });
   }
 
-  // Fetch recommendations
-  const generatePayload: Record<string, any> = {};
-  if (finalUserId) {
-    generatePayload.userId = finalUserId;
-  } else {
-    generatePayload.netSalary = parseCurrency(answers.net_salary);
-    generatePayload.creditScore = creditScore;
-    generatePayload.location = answers.location;
-    generatePayload.idNumber = answers.id_number;
-    generatePayload.preferences = buildPreferencesPayload(answers);
-  }
-
-  const recommendations = await request<
-    Array<{
-      id: string;
-      estimatedMonthlyCost: number | string | null;
-      insuranceCost: number | string | null;
-      loanCost: number | string | null;
-      maintenanceCost: number | string | null;
-      fuelCost: number | string | null;
-      score: number | string | null;
-      car: RecommendationCar;
-    }>
-  >('/recommendations/generate', {
-    method: 'POST',
-    body: JSON.stringify(generatePayload),
-  });
-
   return {
     source: 'api' as const,
-    recommendations: recommendations.map(toRecommendation),
+    recommendations: [] as Recommendation[],
     creditScore,
+    userId: finalUserId,
   };
 }
 
@@ -450,39 +325,7 @@ export async function deleteUser(userId: string): Promise<void> {
   await request(`/users/${userId}`, { method: 'DELETE' });
 }
 
-type RawRecommendation = {
-  id: string;
-  estimatedMonthlyCost: number | string | null;
-  insuranceCost: number | string | null;
-  loanCost: number | string | null;
-  maintenanceCost: number | string | null;
-  fuelCost: number | string | null;
-  score: number | string | null;
-  car: RecommendationCar;
-};
 
-export async function getUserRecommendations(userId: string): Promise<Recommendation[]> {
-  if (USE_MOCK_DATA) return [];
-  try {
-    const raw = await request<RawRecommendation[]>(`/recommendations/user/${userId}`);
-    return raw.map(toRecommendation);
-  } catch {
-    return [];
-  }
-}
-
-export async function generateRecommendations(userId: string): Promise<Recommendation[]> {
-  if (USE_MOCK_DATA) return [];
-  try {
-    const raw = await request<RawRecommendation[]>('/recommendations/generate', {
-      method: 'POST',
-      body: JSON.stringify({ userId }),
-    });
-    return raw.map(toRecommendation);
-  } catch {
-    return [];
-  }
-}
 
 export async function forgotPassword(email: string): Promise<{ resetPath: string | null }> {
   if (USE_MOCK_DATA) {
@@ -506,6 +349,57 @@ export async function resetPassword(email: string, token: string, newPassword: s
     method: 'POST',
     body: JSON.stringify({ email, token, newPassword }),
   });
+}
+
+type AiRecommendationPayload =
+  | { userId: string }
+  | { netSalary: number; creditScore: number; location?: string; yearsLicensed?: number };
+
+export async function generateAiRecommendations(payload: AiRecommendationPayload): Promise<Recommendation[]> {
+  try {
+    const raw = await request<
+      Array<{
+        id: string;
+        estimatedMonthlyCost: number | string | null;
+        insuranceCost: number | string | null;
+        loanCost: number | string | null;
+        maintenanceCost: number | string | null;
+        fuelCost: number | string | null;
+        score: number | string | null;
+        car: RecommendationCar;
+      }>
+    >('/ai-recommendations/generate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return raw.map(toRecommendation);
+  } catch (err) {
+    const original = err instanceof Error ? err.message : String(err);
+    if (original.includes('404') || original.toLowerCase().includes('not found')) {
+      throw new Error(
+        'The AI recommendations service is not available yet (POST /ai-recommendations/generate returned 404). ' +
+        'This endpoint needs to be implemented in the backend API.'
+      );
+    }
+    if (original.includes('fetch') || original.includes('NetworkError') || original.includes('Failed to fetch')) {
+      throw new Error(
+        `Cannot reach the backend at ${API_BASE_URL}. Make sure the API server is running.`
+      );
+    }
+    throw new Error(`AI recommendations failed: ${original}`);
+  }
+}
+
+export async function analyzeExpenses(text: string): Promise<{
+  groceries: number;
+  accounts: number;
+  loans: number;
+  other: number;
+}> {
+  return request<{ groceries: number; accounts: number; loans: number; other: number }>(
+    '/analyze-expenses',
+    { method: 'POST', body: JSON.stringify({ text }) },
+  );
 }
 
 export function isUsingMockData() {

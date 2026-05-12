@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import Image from 'next/image';
-import { signup, login, getUser, getUserRecommendations, generateRecommendations, forgotPassword, resetPassword, submitQuestionnaire } from '@/lib/recommendations';
+import { signup, login, getUser, generateAiRecommendations, forgotPassword, resetPassword, submitQuestionnaire } from '@/lib/recommendations';
 import { AnimatedForm } from '@/components/ui/auth-components';
 
 const GOLF_R_URL =
@@ -88,14 +88,10 @@ export default function Home() {
             sessionStorage.setItem('credit_score', String(profile.creditScore));
           }
 
-          let recs = await getUserRecommendations(user.id);
-          if (recs.length === 0) {
-            // No saved recommendations — auto-generate from profile already in DB
-            recs = await generateRecommendations(user.id);
-          }
+          const recs = await generateAiRecommendations({ userId: user.id });
           if (recs.length > 0) {
             sessionStorage.setItem('recommendations', JSON.stringify(recs));
-            sessionStorage.setItem('result_source', 'api');
+            sessionStorage.setItem('result_source', 'ai');
           }
           
           router.push('/dashboard');
@@ -161,13 +157,14 @@ export default function Home() {
           <div className="absolute inset-0 bg-blue-600">
             <div className="absolute w-[500px] h-[500px] rounded-full bg-blue-500 opacity-40 -bottom-24 -left-24" />
             <div className="absolute w-[300px] h-[300px] rounded-full bg-blue-700 opacity-30 top-10 right-10" />
-            <Image src="/car.svg" alt="Car illustration" fill className="object-cover opacity-30" priority />
+            <Image src="/car.svg" alt="Car illustration" fill sizes="50vw" className="object-cover opacity-30" priority />
           </div>
         ) : (
           <Image
             src={GOLF_R_URL}
             alt="Volkswagen Golf R"
             fill
+            sizes="50vw"
             className="object-cover"
             priority
             onError={() => setCarImgError(true)}
