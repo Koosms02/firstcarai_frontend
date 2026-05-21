@@ -631,6 +631,7 @@ export default function FormPage() {
 
       // Step 2: AI does a live search and returns recommendations
       const resolvedUserId = result.userId ?? userId;
+      if (!resolvedUserId) throw new Error('User not logged in');
       const rawRecs = await generateAiRecommendations({ userId: resolvedUserId });
       // Ensure total always equals sum of components
       const aiRecs = rawRecs.map((r) => {
