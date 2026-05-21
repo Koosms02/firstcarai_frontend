@@ -630,18 +630,8 @@ export default function FormPage() {
       sessionStorage.setItem("credit_score", String(result.creditScore));
 
       // Step 2: AI does a live search and returns recommendations
-      // Works for both logged-in users (userId) and guests (raw profile data)
       const resolvedUserId = result.userId ?? userId;
-      const aiPayload = resolvedUserId
-        ? { userId: resolvedUserId }
-        : {
-            netSalary: parseCurrency(answers.net_salary ?? "0"),
-            creditScore: result.creditScore,
-            location: answers.location,
-            yearsLicensed: YEARS_LICENSED_MAP[answers.years_licenced] ?? undefined,
-          };
-
-      const rawRecs = await generateAiRecommendations(aiPayload);
+      const rawRecs = await generateAiRecommendations({ userId: resolvedUserId });
       // Ensure total always equals sum of components
       const aiRecs = rawRecs.map((r) => {
         const total = r.loanCost + r.insuranceCost + r.fuelCost + r.maintenanceCost;

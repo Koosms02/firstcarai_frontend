@@ -258,32 +258,25 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const storedId = sessionStorage.getItem('user_id') ?? '';
-    const rawAnswers = sessionStorage.getItem('form_answers');
-    
-    // If no user is logged in and no guest answers exist, go home
-    if (!storedId && !rawAnswers) {
-      router.replace('/');
+
+    if (!storedId) {
+      router.replace('/login');
       return;
     }
 
-    if (storedId) {
-      getUser(storedId).then((user) => {
-        // In mock mode getUser always returns null — skip the guard.
-        // In real API mode, null means no profile in DB → send back to home.
-        if (!user && !isUsingMockData()) {
-          sessionStorage.clear();
-          router.replace('/');
-          return;
-        }
+    getUser(storedId).then((user) => {
+      // In mock mode getUser always returns null — skip the guard.
+      // In real API mode, null means no profile in DB → send back to home.
+      if (!user && !isUsingMockData()) {
+        sessionStorage.clear();
+        router.replace('/login');
+        return;
+      }
 
-        setEmail(sessionStorage.getItem('user_email') ?? '');
-        setUserId(storedId);
-        loadDataFromStorage();
-      });
-    } else {
-      // Guest user mode
+      setEmail(sessionStorage.getItem('user_email') ?? '');
+      setUserId(storedId);
       loadDataFromStorage();
-    }
+    });
   }, [router]);
 
   function normalizeRecs(recs: Recommendation[]): Recommendation[] {
@@ -606,7 +599,7 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
             </svg>
             <span className="text-base font-bold text-gray-900">FirstCar</span>
           </div>
-          <p className="text-xs text-gray-400 truncate">{email || 'Guest'}</p>
+          <p className="text-xs text-gray-400 truncate">{email}</p>
         </div>
 
         {/* Nav */}
