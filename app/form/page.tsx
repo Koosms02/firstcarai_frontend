@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { isUsingMockData, submitQuestionnaire, analyzeExpenses, generateAiRecommendations } from "@/lib/recommendations";
+import { isUsingMockData, submitQuestionnaire, analyzeDocument, generateAiRecommendations } from "@/lib/recommendations";
 
 // ─── Static data ────────────────────────────────────────────────────────────
 
@@ -192,12 +192,9 @@ function parseSalaryFromText(text: string): number | null {
 type Answers = Record<string, string>;
 type Errors = Record<string, string>;
 
-function validateAll(answers: Answers): Errors {
+function validateAll(answers: Answers, bankUploaded: boolean): Errors {
   const errors: Errors = {};
 
-  if (!answers.first_name?.trim()) errors.first_name = "Required";
-  if (!answers.last_name?.trim()) errors.last_name = "Required";
-  if (!answers.gender) errors.gender = "Please select an option";
   if (!answers.location) errors.location = "Please select your province";
   if (!answers.city?.trim()) errors.city = "Please select or enter your city";
 
@@ -208,32 +205,11 @@ function validateAll(answers: Answers): Errors {
     if (isNaN(val) || val <= 0) errors.net_salary = "Salary could not be read — please try uploading again";
   }
 
-  if (!answers.id_number?.trim()) {
-    errors.id_number = "Required";
-  } else {
-    const idErr = validateSaId(answers.id_number.trim());
-    if (idErr) errors.id_number = idErr;
-  }
-
-  for (const key of ["expenses_groceries", "expenses_accounts", "expenses_loans"] as const) {
-    if (!answers[key]?.trim()) {
-      errors[key] = "Required";
-    } else {
-      const val = parseCurrency(answers[key]);
-      if (isNaN(val) || val < 0) errors[key] = "Amount must be R 0 or more";
-    }
-  }
-  if (answers.expenses_other?.trim()) {
-    const val = parseCurrency(answers.expenses_other);
-    if (isNaN(val) || val < 0) errors.expenses_other = "Amount must be R 0 or more";
+  if (!bankUploaded) {
+    errors.bank_statement = "Please upload your bank statement to continue";
   }
 
   if (!answers.years_licenced) errors.years_licenced = "Please select an option";
-  else if (answers.id_number?.trim()) {
-    const age = extractAgeFromId(answers.id_number.trim());
-    const yrs = YEARS_LICENSED_MAP[answers.years_licenced] ?? 0;
-    if (age !== null && yrs > age) errors.years_licenced = "Years licensed exceeds your age";
-  }
 
   return errors;
 }
@@ -521,15 +497,15 @@ export default function FormPage() {
   const bankInputRef = useRef<HTMLInputElement>(null);
   const [bankStatus, setBankStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [bankError, setBankError] = useState("");
+  const utilityInputRef = useRef<HTMLInputElement>(null);
+  const [utilityStatus, setUtilityStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [utilityError, setUtilityError] = useState("");
+  const [locationSource, setLocationSource] = useState<"document" | "manual">("document");
 
   function set(key: string, value: string) {
     setAnswers((prev) => {
       const next = { ...prev, [key]: value };
       if (key === "location") next.city = "";
-      if (key === "id_number") {
-        const gender = extractGenderFromId(value);
-        if (gender) next.gender = gender;
-      }
       return next;
     });
     if (errors[key]) setErrors((prev) => { const next = { ...prev }; delete next[key]; return next; });
@@ -575,39 +551,59 @@ export default function FormPage() {
     }
     setBankStatus("loading");
     setBankError("");
+    setErrors((prev) => { const next = { ...prev }; delete next.bank_statement; return next; });
     try {
       const { extractText } = await import("unpdf");
       const buffer = await file.arrayBuffer();
       const { text } = await extractText(new Uint8Array(buffer), { mergePages: true });
-
-      let expenses: { groceries: number; accounts: number; loans: number; other: number } | null = null;
-
-      try {
-        expenses = await analyzeExpenses(text);
-      } catch {
-        // AI unavailable — fall back to regex parsing
-        expenses = parseBankStatementExpenses(text);
-      }
-
-      if (expenses !== null) {
-        set("expenses_groceries", String(expenses.groceries));
-        set("expenses_accounts", String(expenses.accounts));
-        set("expenses_loans", String(expenses.loans));
-        set("expenses_other", String(expenses.other));
-        setBankStatus("success");
-      } else {
-        setBankStatus("error");
-        setBankError("Couldn't find expenses in this statement. Please enter them manually.");
-      }
+      const result = await analyzeDocument(text, "BANK_STATEMENT") as { groceries: number; accounts: number; loans: number; other: number };
+      set("expenses_groceries", String(result.groceries));
+      set("expenses_accounts", String(result.accounts));
+      set("expenses_loans", String(result.loans));
+      set("expenses_other", String(result.other));
+      setBankStatus("success");
     } catch {
       setBankStatus("error");
-      setBankError("Failed to read the PDF. Please enter your expenses manually.");
+      setBankError("We couldn't read your statement — please try a different file.");
+    }
+  }
+
+  async function handleUtilityUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      setUtilityStatus("error");
+      setUtilityError("Please upload a PDF file.");
+      return;
+    }
+    setUtilityStatus("loading");
+    setUtilityError("");
+    try {
+      const { extractText } = await import("unpdf");
+      const buffer = await file.arrayBuffer();
+      const { text } = await extractText(new Uint8Array(buffer), { mergePages: true });
+      const result = await analyzeDocument(text, "UTILITY_BILL") as { province: string | null; city: string | null };
+      if (result.province || result.city) {
+        if (result.province) set("location", result.province);
+        if (result.city) set("city", result.city);
+        setLocationSource("document");
+        setUtilityStatus("success");
+      } else {
+        setUtilityStatus("error");
+        setUtilityError("Couldn't extract location — please select your province and city manually.");
+        setLocationSource("manual");
+      }
+    } catch {
+      setUtilityStatus("error");
+      setUtilityError("Failed to read the PDF. Please select your location manually.");
+      setLocationSource("manual");
     }
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const validationErrors = validateAll(answers);
+    const validationErrors = validateAll(answers, bankStatus === "success");
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
       // Scroll to first error
@@ -715,118 +711,110 @@ export default function FormPage() {
 
           <div className="space-y-12">
 
-            {/* ── About you ── */}
-            <section>
-              <SectionHeading>About you</SectionHeading>
-              <div className="space-y-5">
-                <div className="grid grid-cols-2 gap-4">
-                  <div data-field-error={errors.first_name ? "" : undefined}>
-                    <FieldLabel required>First name</FieldLabel>
-                    <TextInput
-                      value={answers.first_name ?? ""}
-                      onChange={(v) => set("first_name", v)}
-                      placeholder="Thabo"
-                      error={errors.first_name}
-                    />
-                  </div>
-                  <div data-field-error={errors.last_name ? "" : undefined}>
-                    <FieldLabel required>Last name</FieldLabel>
-                    <TextInput
-                      value={answers.last_name ?? ""}
-                      onChange={(v) => set("last_name", v)}
-                      placeholder="Nkosi"
-                      error={errors.last_name}
-                    />
-                  </div>
-                </div>
-              </div>
-            </section>
-
             {/* ── Location ── */}
             <section>
               <SectionHeading>Location</SectionHeading>
-              <div className="grid grid-cols-2 gap-4">
-                <div data-field-error={errors.location ? "" : undefined}>
-                  <FieldLabel required>Province</FieldLabel>
-                  <SelectInput
-                    options={SA_PROVINCES}
-                    value={answers.location ?? ""}
-                    onChange={(v) => set("location", v)}
-                    placeholder="Select province…"
-                    error={errors.location}
-                  />
-                </div>
-                <div data-field-error={errors.city ? "" : undefined}>
-                  <FieldLabel required>City</FieldLabel>
-                  {citiesForProvince.length > 0 ? (
-                    <div>
-                      <SelectInput
-                        options={citiesForProvince}
-                        value={citiesForProvince.includes(answers.city ?? "") ? (answers.city ?? "") : ""}
-                        onChange={(v) => set("city", v)}
-                        placeholder="Select city…"
-                        disabled={!answers.location}
-                        error={!citiesForProvince.includes(answers.city ?? "") ? undefined : errors.city}
-                      />
-                      {answers.location && (
-                        <div className="mt-2">
-                          <input
-                            type="text"
-                            value={citiesForProvince.includes(answers.city ?? "") ? "" : (answers.city ?? "")}
-                            onChange={(e) => set("city", e.target.value)}
-                            placeholder="Or type your city…"
-                            className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-900/10 transition-colors"
-                          />
-                        </div>
-                      )}
-                      <FieldError message={errors.city} />
+
+              {/* Utility bill upload */}
+              <div className="mb-5">
+                <FieldLabel>Upload a municipal or electricity bill <span className="text-gray-400 font-normal">(optional)</span></FieldLabel>
+                <p className="text-xs text-gray-400 mb-2">We'll extract your province and city automatically</p>
+                <input ref={utilityInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleUtilityUpload} />
+
+                {utilityStatus === "success" && answers.location ? (
+                  <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-green-600 shrink-0"><circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/><path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      <span className="text-sm text-green-800 font-medium">{answers.city ? `${answers.city}, ` : ""}{answers.location}</span>
+                      <span className="text-xs text-green-600">extracted from bill</span>
                     </div>
-                  ) : (
-                    <div>
+                    <button
+                      type="button"
+                      onClick={() => { set("location", ""); set("city", ""); setUtilityStatus("idle"); setUtilityError(""); setLocationSource("document"); }}
+                      className="text-xs text-green-600 hover:text-green-800 underline underline-offset-2"
+                    >Remove</button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => utilityInputRef.current?.click()}
+                    disabled={utilityStatus === "loading"}
+                    className="w-full rounded-lg border-2 border-dashed border-gray-200 px-4 py-4 text-center hover:border-gray-400 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {utilityStatus === "loading" ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <svg className="animate-spin h-4 w-4 text-gray-400" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                        <span className="text-sm text-gray-500">Reading bill…</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-gray-400"><path d="M2 12v2h12v-2M8 2v8M5 5l3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        <span className="text-sm text-gray-500">Upload municipal / electricity bill PDF</span>
+                      </div>
+                    )}
+                  </button>
+                )}
+
+                {utilityStatus === "error" && utilityError && (
+                  <p className="mt-1.5 text-xs text-amber-600 flex items-center gap-1"><span>↳</span>{utilityError}</p>
+                )}
+              </div>
+
+              {/* Province + City — shown when not auto-extracted or extraction failed */}
+              {(utilityStatus !== "success" || locationSource === "manual") && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div data-field-error={errors.location ? "" : undefined}>
+                    <FieldLabel required>Province</FieldLabel>
+                    <SelectInput
+                      options={SA_PROVINCES}
+                      value={answers.location ?? ""}
+                      onChange={(v) => set("location", v)}
+                      placeholder="Select province…"
+                      error={errors.location}
+                    />
+                  </div>
+                  <div data-field-error={errors.city ? "" : undefined}>
+                    <FieldLabel required>City</FieldLabel>
+                    {citiesForProvince.length > 0 ? (
+                      <div>
+                        <SelectInput
+                          options={citiesForProvince}
+                          value={citiesForProvince.includes(answers.city ?? "") ? (answers.city ?? "") : ""}
+                          onChange={(v) => set("city", v)}
+                          placeholder="Select city…"
+                          disabled={!answers.location}
+                          error={!citiesForProvince.includes(answers.city ?? "") ? undefined : errors.city}
+                        />
+                        {answers.location && (
+                          <div className="mt-2">
+                            <input
+                              type="text"
+                              value={citiesForProvince.includes(answers.city ?? "") ? "" : (answers.city ?? "")}
+                              onChange={(e) => set("city", e.target.value)}
+                              placeholder="Or type your city…"
+                              className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-900/10 transition-colors"
+                            />
+                          </div>
+                        )}
+                        <FieldError message={errors.city} />
+                      </div>
+                    ) : (
                       <TextInput
                         value={answers.city ?? ""}
                         onChange={(v) => set("city", v)}
                         placeholder={answers.location ? "Type your city…" : "Select province first"}
                         error={errors.city}
                       />
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </section>
 
             {/* ── Finances ── */}
             <section>
               <SectionHeading>Finances</SectionHeading>
               <div className="space-y-5">
-                <div data-field-error={errors.id_number ? "" : undefined}>
-                  <FieldLabel required>South African ID number</FieldLabel>
-                  <p className="text-xs text-gray-400 mb-1.5">Used to determine your credit score securely</p>
-                  <TextInput
-                    value={answers.id_number ?? ""}
-                    onChange={(v) => set("id_number", v.replace(/\D/g, "").slice(0, 13))}
-                    placeholder="9001015009087"
-                    error={errors.id_number}
-                    maxLength={13}
-                    inputMode="numeric"
-                  />
-                </div>
-
-                {(answers.id_number ?? "").length >= 10 && answers.gender && (
-                  <div data-field-error={errors.gender ? "" : undefined}>
-                    <FieldLabel required>Gender</FieldLabel>
-                    <ChipGroup
-                      options={[
-                        { value: "male", label: "Male" },
-                        { value: "female", label: "Female" },
-                      ].filter((opt) => opt.value === answers.gender)}
-                      value={answers.gender}
-                      onChange={(v) => set("gender", v)}
-                      error={errors.gender}
-                    />
-                  </div>
-                )}
-
                 <div data-field-error={errors.net_salary ? "" : undefined}>
                   <FieldLabel required>Monthly net salary</FieldLabel>
                   <p className="text-xs text-gray-400 mb-2">Your take-home pay after tax (20% becomes your car budget)</p>
@@ -898,46 +886,10 @@ export default function FormPage() {
                   )}
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm font-medium text-gray-700">Monthly expenses</p>
-                    <button
-                      type="button"
-                      onClick={() => bankInputRef.current?.click()}
-                      disabled={bankStatus === "loading"}
-                      className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-500 hover:border-gray-400 hover:text-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {bankStatus === "loading" ? (
-                        <>
-                          <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                          </svg>
-                          Reading…
-                        </>
-                      ) : (
-                        <>
-                          <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                            <path d="M2 12v2h12v-2M8 2v8M5 5l3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                          Upload bank statement
-                        </>
-                      )}
-                    </button>
-                    <input
-                      ref={bankInputRef}
-                      type="file"
-                      accept="application/pdf"
-                      className="hidden"
-                      onChange={handleBankUpload}
-                    />
-                  </div>
-
-                  {bankStatus === "error" && bankError && (
-                    <p className="mb-3 text-xs text-amber-600 flex items-center gap-1">
-                      <span>↳</span>{bankError}
-                    </p>
-                  )}
+                <div data-field-error={errors.bank_statement ? "" : undefined}>
+                  <FieldLabel required>Monthly expenses</FieldLabel>
+                  <p className="text-xs text-gray-400 mb-2">Upload your bank statement and we'll extract your expenses automatically</p>
+                  <input ref={bankInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleBankUpload} />
 
                   {bankStatus === "success" ? (
                     <div className="rounded-lg border border-green-200 bg-green-50 overflow-hidden">
@@ -947,14 +899,9 @@ export default function FormPage() {
                         { label: "Loans / credit cards", key: "expenses_loans" },
                         { label: "Other expenses",     key: "expenses_other" },
                       ].map(({ label, key }, i, arr) => (
-                        <div
-                          key={key}
-                          className={`flex items-center justify-between px-4 py-2.5 ${i < arr.length - 1 ? "border-b border-green-100" : ""}`}
-                        >
+                        <div key={key} className={`flex items-center justify-between px-4 py-2.5 ${i < arr.length - 1 ? "border-b border-green-100" : ""}`}>
                           <span className="text-xs text-green-700">{label}</span>
-                          <span className="text-sm font-semibold text-green-800">
-                            R {Number(answers[key] ?? 0).toLocaleString("en-ZA")}
-                          </span>
+                          <span className="text-sm font-semibold text-green-800">R {Number(answers[key] ?? 0).toLocaleString("en-ZA")}</span>
                         </div>
                       ))}
                       <div className="flex items-center justify-between px-4 py-2 border-t border-green-200 bg-green-100/50">
@@ -964,59 +911,47 @@ export default function FormPage() {
                         </div>
                         <button
                           type="button"
-                          onClick={() => {
-                            set("expenses_groceries", "");
-                            set("expenses_accounts", "");
-                            set("expenses_loans", "");
-                            set("expenses_other", "");
-                            setBankStatus("idle");
-                            setBankError("");
-                          }}
+                          onClick={() => { set("expenses_groceries", ""); set("expenses_accounts", ""); set("expenses_loans", ""); set("expenses_other", ""); setBankStatus("idle"); setBankError(""); }}
                           className="text-xs text-green-600 hover:text-green-800 underline underline-offset-2 transition-colors"
-                        >
-                          Remove
-                        </button>
+                        >Remove</button>
                       </div>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div data-field-error={errors.expenses_groceries ? "" : undefined}>
-                        <FieldLabel required>Groceries</FieldLabel>
-                        <CurrencyInput
-                          value={answers.expenses_groceries ?? ""}
-                          onChange={(v) => set("expenses_groceries", v)}
-                          placeholder="3 000"
-                          error={errors.expenses_groceries}
-                        />
-                      </div>
-                      <div data-field-error={errors.expenses_accounts ? "" : undefined}>
-                        <FieldLabel required>Accounts</FieldLabel>
-                        <CurrencyInput
-                          value={answers.expenses_accounts ?? ""}
-                          onChange={(v) => set("expenses_accounts", v)}
-                          placeholder="1 500"
-                          error={errors.expenses_accounts}
-                        />
-                      </div>
-                      <div data-field-error={errors.expenses_loans ? "" : undefined}>
-                        <FieldLabel required>Loans / credit cards</FieldLabel>
-                        <CurrencyInput
-                          value={answers.expenses_loans ?? ""}
-                          onChange={(v) => set("expenses_loans", v)}
-                          placeholder="2 000"
-                          error={errors.expenses_loans}
-                        />
-                      </div>
-                      <div data-field-error={errors.expenses_other ? "" : undefined}>
-                        <FieldLabel>Other expenses</FieldLabel>
-                        <CurrencyInput
-                          value={answers.expenses_other ?? ""}
-                          onChange={(v) => set("expenses_other", v)}
-                          placeholder="500"
-                          error={errors.expenses_other}
-                        />
+                    <button
+                      type="button"
+                      onClick={() => bankInputRef.current?.click()}
+                      disabled={bankStatus === "loading"}
+                      className={`w-full rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                        errors.bank_statement ? "border-red-300 hover:border-red-400" : "border-gray-200 hover:border-gray-400"
+                      }`}
+                    >
+                      {bankStatus === "loading" ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <svg className="animate-spin h-5 w-5 text-gray-400" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                          <span className="text-sm text-gray-500">Analysing statement…</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <svg width="20" height="20" viewBox="0 0 16 16" fill="none" className="text-gray-400"><path d="M2 12v2h12v-2M8 2v8M5 5l3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          <div>
+                            <p className={`text-sm font-medium ${errors.bank_statement ? "text-red-500" : "text-gray-600"}`}>Upload your bank statement PDF</p>
+                            <p className="text-xs text-gray-400 mt-0.5">We'll extract groceries, accounts, loans and other expenses</p>
+                          </div>
+                        </div>
+                      )}
+                    </button>
+                  )}
+                  {bankStatus === "error" && bankError && (
+                    <div className="mt-2 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                      <svg className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm-.75 4a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-1.5 0V5zm.75 6.5a.875.875 0 1 1 0-1.75.875.875 0 0 1 0 1.75z" /></svg>
+                      <div>
+                        <p className="text-xs text-red-600">{bankError}</p>
+                        <button type="button" onClick={() => bankInputRef.current?.click()} className="mt-0.5 text-xs text-red-500 hover:text-red-700 underline underline-offset-2">Try another file</button>
                       </div>
                     </div>
+                  )}
+                  {errors.bank_statement && bankStatus !== "error" && (
+                    <FieldError message={errors.bank_statement} />
                   )}
                 </div>
               </div>

@@ -27,7 +27,7 @@ function validateSaId(id: string): string | null {
     sum += n;
     alternate = !alternate;
   }
-  if (sum % 10 !== 0) return 'Invalid ID number (checksum failed)';
+  if (sum % 10 !== 0) return 'This ID number doesn\'t look valid — please double-check it.';
   return null;
 }
 
@@ -71,17 +71,13 @@ export default function RegisterPage() {
       setIsSubmitting(true);
       setServerError('');
       try {
-        await signup({ email: fields.email.trim(), password: fields.password });
-        const gender = extractGenderFromId(signupFields.idNumber.trim());
-        const existing = sessionStorage.getItem('form_answers');
-        const prev = existing ? (JSON.parse(existing) as Record<string, string>) : {};
-        sessionStorage.setItem('form_answers', JSON.stringify({
-          ...prev,
-          first_name: signupFields.firstName.trim(),
-          last_name: signupFields.lastName.trim(),
-          id_number: signupFields.idNumber.trim(),
-          ...(gender ? { gender } : {}),
-        }));
+        await signup({
+          email: fields.email.trim(),
+          password: fields.password,
+          firstName: signupFields.firstName.trim(),
+          lastName: signupFields.lastName.trim(),
+          idNumber: signupFields.idNumber.trim(),
+        });
         router.push('/login?registered=1');
       } catch (err) {
         setServerError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
@@ -156,14 +152,21 @@ export default function RegisterPage() {
                   setSignupFields((p) => ({ ...p, idNumber: val }));
                   setErrors((p) => ({ ...p, idNumber: '' }));
                 }}
-                className="h-10 w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-black placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className={`h-10 w-full rounded-md border bg-gray-50 px-3 py-2 text-sm text-black placeholder:text-neutral-400 focus:outline-none focus:ring-2 ${errors.idNumber ? 'border-red-400 focus:ring-red-300' : 'border-gray-300 focus:ring-blue-400'}`}
               />
               {signupFields.idNumber.length >= 10 && extractGenderFromId(signupFields.idNumber) && (
                 <p className="text-xs text-blue-600 font-medium">
                   Gender detected: {extractGenderFromId(signupFields.idNumber) === 'male' ? 'Male' : 'Female'}
                 </p>
               )}
-              {errors.idNumber && <p className="text-red-500 text-xs">{errors.idNumber}</p>}
+              {errors.idNumber && (
+                <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                  <svg className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm-.75 4a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-1.5 0V5zm.75 6.5a.875.875 0 1 1 0-1.75.875.875 0 0 1 0 1.75z" />
+                  </svg>
+                  <p className="text-xs text-red-600">{errors.idNumber}</p>
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col gap-1.5">

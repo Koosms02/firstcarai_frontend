@@ -18,6 +18,7 @@ export type RecommendationDealer = {
 
 export type Recommendation = {
   id: string;
+  isPreferred?: boolean;
   estimatedMonthlyCost: number;
   insuranceCost: number;
   loanCost: number;
@@ -33,24 +34,26 @@ export type QuestionnaireAnswers = Record<string, string>;
 type SignupPayload = {
   email: string;
   password: string;
+  firstName: string;
+  lastName: string;
+  idNumber: string;
 };
 
 type UpsertUserPayload = {
   email: string;
   netSalary: number;
   creditScore: number;
-  fullName?: string;
-  idNumber?: string;
   yearsLicensed?: number;
-  gender?: string;
   location?: string;
-};
-
-type CreatePreferencesPayload = {
+  city?: string;
   preferredBrand?: string;
   carType?: string;
   fuelType?: string;
   transmission?: string;
+  expensesGroceries?: number;
+  expensesAccounts?: number;
+  expensesLoans?: number;
+  expensesOther?: number;
 };
 
 type CreatedUser = {
@@ -89,8 +92,10 @@ function decodeJwtPayload(token: string): { sub: string; email: string } {
   return JSON.parse(atob(base64)) as { sub: string; email: string };
 }
 
+/** Convert AI response shape (nested car/dealer) to Recommendation */
 function toRecommendation(raw: {
   id: string;
+  isPreferred?: boolean;
   estimatedMonthlyCost: number | string | null;
   insuranceCost: number | string | null;
   loanCost: number | string | null;
@@ -98,9 +103,11 @@ function toRecommendation(raw: {
   fuelCost: number | string | null;
   score: number | string | null;
   car: RecommendationCar;
+  dealer?: RecommendationDealer | null;
 }): Recommendation {
   return {
     id: raw.id,
+    isPreferred: raw.isPreferred ?? false,
     estimatedMonthlyCost: Number(raw.estimatedMonthlyCost ?? 0),
     insuranceCost: Number(raw.insuranceCost ?? 0),
     loanCost: Number(raw.loanCost ?? 0),
@@ -108,6 +115,59 @@ function toRecommendation(raw: {
     fuelCost: Number(raw.fuelCost ?? 0),
     score: Number(raw.score ?? 0),
     car: raw.car,
+    dealer: raw.dealer ?? null,
+  };
+}
+
+/** Convert flat DB row (inline car fields) to Recommendation */
+function dbRowToRecommendation(row: {
+  id: string;
+  isPreferred?: boolean;
+  make?: string | null;
+  model?: string | null;
+  year?: number | null;
+  price?: number | string | null;
+  carFuelType?: string | null;
+  transmission?: string | null;
+  mileage?: number | null;
+  imageUrl?: string | null;
+  dealerName?: string | null;
+  dealerLocation?: string | null;
+  dealerReputationNote?: string | null;
+  estimatedMonthlyCost?: number | string | null;
+  insuranceCost?: number | string | null;
+  loanCost?: number | string | null;
+  maintenanceCost?: number | string | null;
+  fuelCost?: number | string | null;
+  score?: number | string | null;
+}): Recommendation {
+  return {
+    id: row.id,
+    isPreferred: row.isPreferred ?? false,
+    estimatedMonthlyCost: Number(row.estimatedMonthlyCost ?? 0),
+    insuranceCost: Number(row.insuranceCost ?? 0),
+    loanCost: Number(row.loanCost ?? 0),
+    maintenanceCost: Number(row.maintenanceCost ?? 0),
+    fuelCost: Number(row.fuelCost ?? 0),
+    score: Number(row.score ?? 0),
+    car: {
+      id: row.id,
+      make: row.make ?? '',
+      model: row.model ?? '',
+      year: row.year ?? null,
+      price: row.price != null ? Number(row.price) : null,
+      fuelType: row.carFuelType ?? null,
+      transmission: row.transmission ?? null,
+      mileage: row.mileage ?? null,
+      imageUrl: row.imageUrl ?? null,
+    },
+    dealer: row.dealerName
+      ? {
+          name: row.dealerName,
+          location: row.dealerLocation ?? '',
+          reputationNote: row.dealerReputationNote ?? '',
+        }
+      : null,
   };
 }
 
@@ -140,27 +200,21 @@ function buildUpsertUserPayload(
   answers: QuestionnaireAnswers,
   creditScore: number,
 ): UpsertUserPayload {
-  const nameParts = [answers.first_name, answers.last_name].filter(Boolean);
   return {
     email,
     netSalary: parseCurrency(answers.net_salary),
     creditScore,
-    fullName: nameParts.length > 0 ? nameParts.join(' ') : undefined,
-    idNumber: answers.id_number || undefined,
     yearsLicensed: YEARS_LICENSED_MAP[answers.years_licenced],
-    gender: answers.gender || undefined,
     location: answers.location || undefined,
-  };
-}
-
-function buildPreferencesPayload(
-  answers: QuestionnaireAnswers,
-): CreatePreferencesPayload {
-  return {
+    city: answers.city || undefined,
     preferredBrand: answers.preferred_brand || undefined,
     carType: answers.car_type || undefined,
     fuelType: answers.fuel_type || undefined,
     transmission: answers.transmission || undefined,
+    expensesGroceries: answers.expenses_groceries ? parseCurrency(answers.expenses_groceries) : undefined,
+    expensesAccounts: answers.expenses_accounts ? parseCurrency(answers.expenses_accounts) : undefined,
+    expensesLoans: answers.expenses_loans ? parseCurrency(answers.expenses_loans) : undefined,
+    expensesOther: answers.expenses_other ? parseCurrency(answers.expenses_other) : undefined,
   };
 }
 
@@ -180,7 +234,7 @@ export async function signup(payload: SignupPayload): Promise<{ id: string; emai
   return { id: sub, email };
 }
 
-export async function login(payload: SignupPayload): Promise<{ id: string; email: string }> {
+export async function login(payload: { email: string; password: string }): Promise<{ id: string; email: string }> {
   if (USE_MOCK_DATA) {
     await new Promise((resolve) => setTimeout(resolve, 300));
     return { id: 'mock-user-id', email: payload.email };
@@ -226,7 +280,6 @@ export async function submitQuestionnaire(
     };
   }
 
-  // Calculate mock credit score based on user input
   const creditScoreRes = await request<{ creditScore: number }>('/credit-score/check', {
     method: 'POST',
     body: JSON.stringify({
@@ -246,7 +299,6 @@ export async function submitQuestionnaire(
 
   if (email) {
     const upsertPayload = buildUpsertUserPayload(email, answers, creditScore);
-    const preferencesPayload = buildPreferencesPayload(answers);
 
     const user = await request<CreatedUser>('/users', {
       method: 'POST',
@@ -254,11 +306,6 @@ export async function submitQuestionnaire(
     });
 
     finalUserId = user.id;
-
-    await request(`/users/${user.id}/preferences`, {
-      method: 'POST',
-      body: JSON.stringify(preferencesPayload),
-    });
   }
 
   return {
@@ -272,29 +319,33 @@ export async function submitQuestionnaire(
 export type User = {
   id: string;
   email: string;
-  fullName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  idNumber?: string | null;
+  gender?: string | null;
   netSalary?: number | null;
   creditScore?: number | null;
   yearsLicensed?: number | null;
-  gender?: string | null;
   location?: string | null;
-  idNumber?: string | null;
+  city?: string | null;
+  preferredBrand?: string | null;
+  carType?: string | null;
+  fuelType?: string | null;
+  transmission?: string | null;
+  expensesGroceries?: number | null;
+  expensesAccounts?: number | null;
+  expensesLoans?: number | null;
+  expensesOther?: number | null;
   createdAt?: string | null;
-  preferences?: Array<{
-    preferredBrand?: string | null;
-    carType?: string | null;
-    fuelType?: string | null;
-    transmission?: string | null;
-  }>;
 };
 
 export async function getUsers(): Promise<User[]> {
   if (USE_MOCK_DATA) {
     await new Promise((resolve) => setTimeout(resolve, 300));
     return [
-      { id: 'mock-user-1', email: 'alice@example.com', gender: 'female', location: 'Cape Town', netSalary: 25000, creditScore: 720, yearsLicensed: 3 },
-      { id: 'mock-user-2', email: 'bob@example.com', gender: 'male', location: 'Johannesburg', netSalary: 18000, creditScore: 650, yearsLicensed: 1 },
-      { id: 'mock-user-3', email: 'charlie@example.com', gender: 'male', location: 'Durban', netSalary: 32000, creditScore: 770, yearsLicensed: 6 },
+      { id: 'mock-user-1', email: 'alice@example.com', firstName: 'Alice', lastName: 'Smith', gender: 'female', location: 'Western Cape', city: 'Cape Town', netSalary: 25000, creditScore: 720, yearsLicensed: 3 },
+      { id: 'mock-user-2', email: 'bob@example.com', firstName: 'Bob', lastName: 'Jones', gender: 'male', location: 'Gauteng', city: 'Johannesburg', netSalary: 18000, creditScore: 650, yearsLicensed: 1 },
+      { id: 'mock-user-3', email: 'charlie@example.com', firstName: 'Charlie', lastName: 'Brown', gender: 'male', location: 'KwaZulu-Natal', city: 'Durban', netSalary: 32000, creditScore: 770, yearsLicensed: 6 },
     ];
   }
 
@@ -304,8 +355,6 @@ export async function getUsers(): Promise<User[]> {
 export async function getUser(userId: string): Promise<User | null> {
   if (USE_MOCK_DATA) {
     await new Promise((resolve) => setTimeout(resolve, 100));
-    // In mock mode, return null so the login flow correctly sends new users to the form.
-    // The dashboard sets hasSubmittedForm from sessionStorage instead.
     return null;
   }
 
@@ -325,7 +374,34 @@ export async function deleteUser(userId: string): Promise<void> {
   await request(`/users/${userId}`, { method: 'DELETE' });
 }
 
+export async function getUserRecommendations(userId: string): Promise<Recommendation[]> {
+  if (USE_MOCK_DATA) {
+    return [];
+  }
+  const rows = await request<Parameters<typeof dbRowToRecommendation>[0][]>(
+    `/recommendations/user/${userId}`,
+  );
+  return rows.map(dbRowToRecommendation);
+}
 
+export async function setPreferredCar(recommendationId: string): Promise<void> {
+  if (USE_MOCK_DATA) {
+    return;
+  }
+  await request(`/recommendations/${recommendationId}/prefer`, { method: 'PATCH' });
+}
+
+export async function saveDocument(payload: {
+  userId: string;
+  documentType: 'PAYSLIP' | 'BANK_STATEMENT' | 'UTILITY_BILL';
+  fileName: string;
+  extractedData?: Record<string, unknown>;
+}): Promise<void> {
+  if (USE_MOCK_DATA) {
+    return;
+  }
+  await request('/documents', { method: 'POST', body: JSON.stringify(payload) });
+}
 
 export async function forgotPassword(email: string): Promise<{ resetPath: string | null }> {
   if (USE_MOCK_DATA) {
@@ -367,6 +443,7 @@ export async function generateAiRecommendations(payload: AiRecommendationPayload
         fuelCost: number | string | null;
         score: number | string | null;
         car: RecommendationCar;
+        dealer?: RecommendationDealer | null;
       }>
     >('/ai-recommendations/generate', {
       method: 'POST',
@@ -390,6 +467,31 @@ export async function generateAiRecommendations(payload: AiRecommendationPayload
   }
 }
 
+export async function analyzeDocument(
+  text: string,
+  documentType: 'PAYSLIP' | 'BANK_STATEMENT' | 'UTILITY_BILL',
+): Promise<
+  | { groceries: number; accounts: number; loans: number; other: number }
+  | { province: string | null; city: string | null }
+  | { netSalary: number | null }
+> {
+  if (USE_MOCK_DATA) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    if (documentType === 'BANK_STATEMENT') {
+      return { groceries: 3200, accounts: 800, loans: 1500, other: 600 };
+    } else if (documentType === 'UTILITY_BILL') {
+      return { province: 'Gauteng', city: 'Johannesburg' };
+    } else {
+      return { netSalary: 25000 };
+    }
+  }
+  return request('/analyze-document', {
+    method: 'POST',
+    body: JSON.stringify({ text, documentType }),
+  });
+}
+
+/** @deprecated Use analyzeDocument instead */
 export async function analyzeExpenses(text: string): Promise<{
   groceries: number;
   accounts: number;

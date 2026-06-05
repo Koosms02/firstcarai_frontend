@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { deleteUser, generateAiRecommendations, getUser, isUsingMockData, submitQuestionnaire, type Recommendation } from '@/lib/recommendations';
+import { deleteUser, generateAiRecommendations, getUser, isUsingMockData, setPreferredCar as setPreferredCarApi, submitQuestionnaire, type Recommendation } from '@/lib/recommendations';
 
 function formatCurrency(value: number | null) {
   if (value === null) return 'N/A';
@@ -301,7 +301,10 @@ export default function DashboardPage() {
     const parsedAnswers = rawAnswers ? (JSON.parse(rawAnswers) as Record<string, string>) : {};
     if (rawAnswers) setAnswers(parsedAnswers);
 
+    // Preferred car: check isPreferred on recs first, then fall back to storage
+    const preferredFromRecs = recs.find((r) => r.isPreferred)?.id ?? null;
     const savedPreferredId =
+      preferredFromRecs ??
       sessionStorage.getItem('preferred_car_id') ??
       localStorage.getItem('preferred_car_id');
     if (savedPreferredId) setPreferredCarIdState(savedPreferredId);
@@ -428,6 +431,8 @@ export default function DashboardPage() {
       localStorage.setItem('preferred_car_id', id);
       const rec = recommendations.find((r) => r.id === id);
       if (rec) localStorage.setItem('preferred_car_snapshot', JSON.stringify(rec));
+      // Persist to DB (fire-and-forget — local UI already updated)
+      void setPreferredCarApi(id).catch(() => { /* silent fail */ });
       void startCarAdvisorChat(id, rec ?? null);
       // Scroll to chat after a short delay so the section has rendered
       setTimeout(() => {

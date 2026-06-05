@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, Suspense } from 'react';
-import { login, getUser, generateAiRecommendations, forgotPassword } from '@/lib/recommendations';
+import { login, getUser, getUserRecommendations, forgotPassword } from '@/lib/recommendations';
 import { AnimatedForm } from '@/components/ui/auth-components';
 import { AuthLeftPanel, MobileLogo } from '@/components/ui/auth-layout';
 
@@ -40,33 +40,34 @@ function LoginForm() {
       if (hasCompletedForm && profile) {
         const reverseYearsMap: Record<number, string> = { 0: 'less-than-1', 2: '1-3', 4: '3-5', 6: '5-plus' };
         const formAnswers: Record<string, string> = {};
-        if (profile.fullName) {
-          const [firstName, ...rest] = profile.fullName.split(' ');
-          formAnswers.first_name = firstName ?? '';
-          formAnswers.last_name = rest.join(' ');
-        }
+        if (profile.firstName) formAnswers.first_name = profile.firstName;
+        if (profile.lastName) formAnswers.last_name = profile.lastName;
         if (profile.netSalary != null) formAnswers.net_salary = String(profile.netSalary);
         if (profile.gender) formAnswers.gender = profile.gender;
         if (profile.location) formAnswers.location = profile.location;
+        if (profile.city) formAnswers.city = profile.city;
         if (profile.idNumber) formAnswers.id_number = profile.idNumber;
         if (profile.yearsLicensed != null) {
           formAnswers.years_licenced = reverseYearsMap[profile.yearsLicensed] ?? '';
         }
-        const pref = profile.preferences?.[0];
-        if (pref?.preferredBrand) formAnswers.preferred_brand = pref.preferredBrand;
-        if (pref?.carType) formAnswers.car_type = pref.carType;
-        if (pref?.fuelType) formAnswers.fuel_type = pref.fuelType;
-        if (pref?.transmission) formAnswers.transmission = pref.transmission;
+        if (profile.preferredBrand) formAnswers.preferred_brand = profile.preferredBrand;
+        if (profile.carType) formAnswers.car_type = profile.carType;
+        if (profile.fuelType) formAnswers.fuel_type = profile.fuelType;
+        if (profile.transmission) formAnswers.transmission = profile.transmission;
+        if (profile.expensesGroceries != null) formAnswers.expenses_groceries = String(profile.expensesGroceries);
+        if (profile.expensesAccounts != null) formAnswers.expenses_accounts = String(profile.expensesAccounts);
+        if (profile.expensesLoans != null) formAnswers.expenses_loans = String(profile.expensesLoans);
+        if (profile.expensesOther != null) formAnswers.expenses_other = String(profile.expensesOther);
         sessionStorage.setItem('form_answers', JSON.stringify(formAnswers));
 
         if (profile.creditScore != null) {
           sessionStorage.setItem('credit_score', String(profile.creditScore));
         }
 
-        const recs = await generateAiRecommendations({ userId: user.id });
+        const recs = await getUserRecommendations(user.id);
         if (recs.length > 0) {
           sessionStorage.setItem('recommendations', JSON.stringify(recs));
-          sessionStorage.setItem('result_source', 'ai');
+          sessionStorage.setItem('result_source', 'api');
         }
 
         router.push('/dashboard');
