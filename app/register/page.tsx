@@ -71,21 +71,38 @@ export default function RegisterPage() {
       setIsSubmitting(true);
       setServerError('');
       try {
-        await signup({
+        const user = await signup({
           email: fields.email.trim(),
           password: fields.password,
           firstName: signupFields.firstName.trim(),
           lastName: signupFields.lastName.trim(),
           idNumber: signupFields.idNumber.trim(),
         });
-        router.push('/login?registered=1');
+        sessionStorage.setItem('user_id', user.id);
+        sessionStorage.setItem('user_email', user.email);
+        router.push('/form');
       } catch (err) {
-        setServerError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+        const msg = err instanceof Error ? err.message : '';
+        if (!msg || /internal server error|500|database|connection/i.test(msg)) {
+          setServerError('Something went wrong while creating your account. Please try again later.');
+        } else {
+          setServerError(msg);
+        }
       } finally {
         setIsSubmitting(false);
       }
     })();
   }
+
+  const isFormValid = !!(
+    signupFields.firstName.trim() &&
+    signupFields.lastName.trim() &&
+    fields.email.trim() &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.email.trim()) &&
+    validateSaId(signupFields.idNumber) === null &&
+    fields.password.length >= 8 &&
+    /(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^A-Za-z\d])/.test(fields.password)
+  );
 
   return (
     <div className="min-h-screen flex">
@@ -154,7 +171,7 @@ export default function RegisterPage() {
                 }}
                 className={`h-10 w-full rounded-md border bg-gray-50 px-3 py-2 text-sm text-black placeholder:text-neutral-400 focus:outline-none focus:ring-2 ${errors.idNumber ? 'border-red-400 focus:ring-red-300' : 'border-gray-300 focus:ring-blue-400'}`}
               />
-              {signupFields.idNumber.length >= 10 && extractGenderFromId(signupFields.idNumber) && (
+              {validateSaId(signupFields.idNumber) === null && extractGenderFromId(signupFields.idNumber) && (
                 <p className="text-xs text-blue-600 font-medium">
                   Gender detected: {extractGenderFromId(signupFields.idNumber) === 'male' ? 'Male' : 'Female'}
                 </p>
@@ -183,6 +200,22 @@ export default function RegisterPage() {
                   {showPassword ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                 </button>
               </div>
+              {fields.password && (
+                <div className="mt-2 space-y-1">
+                  {[
+                    { label: 'At least 8 characters', met: fields.password.length >= 8 },
+                    { label: 'Uppercase letter', met: /[A-Z]/.test(fields.password) },
+                    { label: 'Lowercase letter', met: /[a-z]/.test(fields.password) },
+                    { label: 'Number', met: /\d/.test(fields.password) },
+                    { label: 'Special character', met: /[^A-Za-z\d]/.test(fields.password) },
+                  ].map(({ label, met }) => (
+                    <div key={label} className={`flex items-center gap-1.5 text-xs ${met ? 'text-green-600' : 'text-gray-400'}`}>
+                      <span>{met ? '✓' : '○'}</span>
+                      <span>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {errors.password && <p className="text-red-500 text-xs">{errors.password}</p>}
             </div>
 
@@ -190,8 +223,8 @@ export default function RegisterPage() {
 
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="mt-1 h-10 w-full rounded-md bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition-colors disabled:opacity-60"
+              disabled={isSubmitting || !isFormValid}
+              className="mt-1 h-10 w-full rounded-md bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isSubmitting ? 'Creating account…' : 'Create account →'}
             </button>

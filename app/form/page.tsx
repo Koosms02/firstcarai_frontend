@@ -683,13 +683,7 @@ export default function FormPage() {
           </svg>
           <span className="text-sm font-semibold text-gray-900">FirstCar</span>
         </div>
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard")}
-          className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
-        >
-          Skip →
-        </button>
+        <div />
       </header>
 
       {/* Form */}
