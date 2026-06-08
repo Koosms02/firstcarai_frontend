@@ -75,7 +75,6 @@ function getBrandDisplayName(value: string): string {
 function carMatchesBrand(make: string, brandValue: string): boolean {
   const makeLower = make.toLowerCase();
   const brandLower = brandValue.toLowerCase();
-  // Handle "mercedes" matching "mercedes-benz"
   return makeLower === brandLower || makeLower.includes(brandLower) || brandLower.includes(makeLower);
 }
 
@@ -182,6 +181,135 @@ function getCreditScoreRating(score: number): { label: string; color: string; bg
   return { label: 'Poor', color: 'text-red-700', bg: 'bg-red-50 border-red-200', bar: 'bg-red-500' };
 }
 
+function getCreditScoreExplanation(score: number): { riskLevel: string; message: string; impact: string } {
+  if (score >= 700) {
+    return {
+      riskLevel: 'Low Risk',
+      message: 'Excellent credit profile. You qualify for the widest range of vehicles with the best interest rates.',
+      impact: 'Lower insurance premiums and better loan terms, meaning more affordable monthly payments.',
+    };
+  }
+  if (score >= 600) {
+    return {
+      riskLevel: 'Medium Risk',
+      message: 'Good credit profile. Most vehicles remain affordable with competitive interest rates.',
+      impact: 'Standard insurance rates apply. You may see slightly higher interest rates on loans.',
+    };
+  }
+  return {
+    riskLevel: 'High Risk',
+    message: 'Higher insurance and affordability risk. Consider improving your financial profile.',
+    impact: 'Higher insurance premiums and loan interest rates will increase your monthly costs significantly.',
+  };
+}
+
+function computeBadges(rec: Recommendation, allRecs: Recommendation[], budget: number): { label: string; color: string }[] {
+  const badges: { label: string; color: string }[] = [];
+  if (allRecs.length === 0) return badges;
+
+  // Best Match — highest score
+  const maxScore = Math.max(...allRecs.map((r) => r.score));
+  if (rec.score === maxScore && rec.score > 0) {
+    badges.push({ label: 'Best Match', color: 'bg-blue-500 text-white' });
+  }
+
+  // Most Affordable — lowest monthly cost
+  const minCost = Math.min(...allRecs.map((r) => r.estimatedMonthlyCost));
+  if (rec.estimatedMonthlyCost === minCost && allRecs.length > 1) {
+    badges.push({ label: 'Most Affordable', color: 'bg-green-500 text-white' });
+  }
+
+  // Lowest Insurance
+  const minInsurance = Math.min(...allRecs.map((r) => r.insuranceCost));
+  if (rec.insuranceCost === minInsurance && rec.insuranceCost > 0 && allRecs.length > 1) {
+    badges.push({ label: 'Lowest Insurance', color: 'bg-teal-500 text-white' });
+  }
+
+  // Best Fuel Economy — lowest fuel cost
+  const minFuel = Math.min(...allRecs.map((r) => r.fuelCost));
+  if (rec.fuelCost === minFuel && rec.fuelCost > 0 && allRecs.length > 1) {
+    badges.push({ label: 'Best Fuel Economy', color: 'bg-emerald-500 text-white' });
+  }
+
+  // Family Friendly — SUVs and bakkies with good scores
+  const carType = (rec.car.model || '').toLowerCase();
+  if (/suv|crossover|fortuner|tucson|sportage|rav4|x3|tiguan|sorento/i.test(carType) || /suv/i.test(rec.car.make)) {
+    badges.push({ label: 'Family Friendly', color: 'bg-purple-500 text-white' });
+  }
+
+  // Budget Saver — well under budget
+  if (budget > 0 && rec.estimatedMonthlyCost < budget * 0.75) {
+    badges.push({ label: 'Budget Saver', color: 'bg-amber-500 text-white' });
+  }
+
+  return badges;
+}
+
+function computeConfidenceScore(rec: Recommendation, budget: number, creditScore: number | null, yearsLicenced: string): number {
+  let score = 0;
+  let factors = 0;
+
+  // Affordability (40% weight)
+  if (budget > 0) {
+    const affordRatio = Math.max(0, 1 - rec.estimatedMonthlyCost / budget);
+    score += affordRatio * 40;
+    factors += 40;
+  }
+
+  // Match score from API (25% weight)
+  score += rec.score * 25;
+  factors += 25;
+
+  // Credit score factor (20% weight)
+  if (creditScore !== null) {
+    const creditFactor = Math.min(1, Math.max(0, (creditScore - 300) / 550));
+    score += creditFactor * 20;
+    factors += 20;
+  }
+
+  // Driving experience (15% weight)
+  const expMap: Record<string, number> = { 'less-than-1': 0.3, '1-3': 0.5, '3-5': 0.75, '5-plus': 1 };
+  const expFactor = expMap[yearsLicenced] ?? 0.5;
+  score += expFactor * 15;
+  factors += 15;
+
+  return factors > 0 ? Math.round((score / factors) * 100) : Math.round(rec.score * 100);
+}
+
+function getRecommendationExplanation(rec: Recommendation, budget: number, creditScore: number | null): string {
+  const parts: string[] = [];
+
+  if (budget > 0) {
+    const pctOfBudget = Math.round((rec.estimatedMonthlyCost / budget) * 100);
+    if (pctOfBudget <= 75) parts.push('Well within your monthly budget');
+    else if (pctOfBudget <= 90) parts.push('Fits within your monthly budget');
+    else if (pctOfBudget <= 100) parts.push('Close to your budget limit');
+    else parts.push('Slightly above your budget');
+  }
+
+  if (rec.insuranceCost > 0) {
+    const avgInsurance = 800; // rough SA average
+    if (rec.insuranceCost < avgInsurance * 0.7) parts.push('low insurance risk');
+    else if (rec.insuranceCost < avgInsurance) parts.push('reasonable insurance cost');
+  }
+
+  if (rec.fuelCost > 0) {
+    const avgFuel = 1200;
+    if (rec.fuelCost < avgFuel * 0.7) parts.push('excellent fuel efficiency');
+    else if (rec.fuelCost < avgFuel) parts.push('good fuel efficiency');
+  }
+
+  if (rec.score >= 0.85) parts.push('strong preference match');
+  else if (rec.score >= 0.7) parts.push('matches your preferences');
+
+  if (creditScore !== null && creditScore >= 700) {
+    parts.push('your credit score qualifies for competitive rates');
+  }
+
+  if (parts.length === 0) return 'Recommended based on your profile.';
+  return parts[0] + (parts.length > 1 ? ', has ' + parts.slice(1).join(', ') : '') + '.';
+}
+
 const PROVINCE_CITY: Record<string, string> = {
   Gauteng: 'Pretoria',
   'Western Cape': 'Cape Town',
@@ -202,6 +330,7 @@ type SearchLogEntry = {
   resultCount: number;
   budget: number;
   filters: { brand: string; carType: string; fuelType: string; transmission: string };
+  recommendations?: Array<{ make: string; model: string; monthlyCost: number; score: number }>;
 };
 
 function loadSearchLog(): SearchLogEntry[] {
@@ -213,8 +342,15 @@ function loadSearchLog(): SearchLogEntry[] {
 function appendSearchLog(entry: SearchLogEntry) {
   const log = loadSearchLog();
   log.unshift(entry);
-  localStorage.setItem('search_log', JSON.stringify(log.slice(0, 50))); // keep last 50
+  localStorage.setItem('search_log', JSON.stringify(log.slice(0, 50)));
 }
+
+type Filters = {
+  fuelType: string;
+  transmission: string;
+  carType: string;
+  maxMonthlyCost: string;
+};
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -239,7 +375,6 @@ export default function DashboardPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
-
   // Preferred car state
   const [preferredCarId, setPreferredCarIdState] = useState<string | null>(null);
 
@@ -255,6 +390,22 @@ export default function DashboardPage() {
   // Brand filter state
   const [brandFilter, setBrandFilter] = useState<string>('all');
 
+  // UX-025: Advanced filters
+  const [filters, setFilters] = useState<Filters>({ fuelType: 'all', transmission: 'all', carType: 'all', maxMonthlyCost: 'all' });
+  const [showFilters, setShowFilters] = useState(false);
+
+  // UX-023: Comparison tool
+  const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
+  const [showCompareModal, setShowCompareModal] = useState(false);
+
+  // UX-016: Credit score info panel
+  const [showCreditInfo, setShowCreditInfo] = useState(false);
+
+  // UX-017: Affordability breakdown
+  const [showAffordability, setShowAffordability] = useState(false);
+
+  // UX-019: Show rejected vehicles
+  const [showRejected, setShowRejected] = useState(false);
 
   useEffect(() => {
     const storedId = sessionStorage.getItem('user_id') ?? '';
@@ -265,8 +416,6 @@ export default function DashboardPage() {
     }
 
     getUser(storedId).then((user) => {
-      // In mock mode getUser always returns null — skip the guard.
-      // In real API mode, null means no profile in DB → send back to home.
       if (!user && !isUsingMockData()) {
         sessionStorage.clear();
         router.replace('/login');
@@ -301,7 +450,6 @@ export default function DashboardPage() {
     const parsedAnswers = rawAnswers ? (JSON.parse(rawAnswers) as Record<string, string>) : {};
     if (rawAnswers) setAnswers(parsedAnswers);
 
-    // Preferred car: check isPreferred on recs first, then fall back to storage
     const preferredFromRecs = recs.find((r) => r.isPreferred)?.id ?? null;
     const savedPreferredId =
       preferredFromRecs ??
@@ -312,7 +460,6 @@ export default function DashboardPage() {
     const savedCreditScore = sessionStorage.getItem('credit_score');
     if (savedCreditScore) setCreditScore(Number(savedCreditScore));
 
-    // Write a search log entry if this is a fresh result load
     if (recs.length > 0 && (src === 'api' || src === 'mock')) {
       const netSalary = parsedAnswers.net_salary
         ? parseFloat(parsedAnswers.net_salary.replace(/[^\d.]/g, '')) || 0
@@ -329,6 +476,12 @@ export default function DashboardPage() {
           fuelType: parsedAnswers.fuel_type ?? 'Any',
           transmission: parsedAnswers.transmission ?? 'Any',
         },
+        recommendations: recs.slice(0, 5).map((r) => ({
+          make: r.car.make,
+          model: r.car.model,
+          monthlyCost: r.estimatedMonthlyCost,
+          score: r.score,
+        })),
       };
       appendSearchLog(entry);
     }
@@ -337,6 +490,14 @@ export default function DashboardPage() {
   }
 
   const budget = parseCurrencyValue(answers.net_salary ?? '') * 0.20;
+
+  const netSalary = parseCurrencyValue(answers.net_salary ?? '');
+  const expGroceries = parseCurrencyValue(answers.expenses_groceries ?? '');
+  const expAccounts = parseCurrencyValue(answers.expenses_accounts ?? '');
+  const expLoans = parseCurrencyValue(answers.expenses_loans ?? '');
+  const expOther = parseCurrencyValue(answers.expenses_other ?? '');
+  const totalExpenses = expGroceries + expAccounts + expLoans + expOther;
+  const disposableIncome = netSalary - totalExpenses;
 
   function startEditing() {
     setEditedAnswers({ ...answers });
@@ -358,7 +519,6 @@ export default function DashboardPage() {
       sessionStorage.setItem('form_answers', JSON.stringify(editedAnswers));
       sessionStorage.setItem('credit_score', String(result.creditScore));
 
-      // Always fetch AI recommendations after profile update
       const resolvedUserId = result.userId ?? userId;
       const aiPayload = resolvedUserId
         ? { userId: resolvedUserId }
@@ -395,22 +555,16 @@ export default function DashboardPage() {
   }
 
   function buildFinancialContext() {
-    const netSalary = parseCurrencyValue(answers.net_salary ?? '0');
-    const totalExpenses =
-      parseCurrencyValue(answers.expenses_groceries ?? '0') +
-      parseCurrencyValue(answers.expenses_accounts ?? '0') +
-      parseCurrencyValue(answers.expenses_loans ?? '0') +
-      parseCurrencyValue(answers.expenses_other ?? '0');
     return {
       netSalary,
       expenses: {
-        groceries: parseCurrencyValue(answers.expenses_groceries ?? '0'),
-        accounts: parseCurrencyValue(answers.expenses_accounts ?? '0'),
-        loans: parseCurrencyValue(answers.expenses_loans ?? '0'),
-        other: parseCurrencyValue(answers.expenses_other ?? '0'),
+        groceries: expGroceries,
+        accounts: expAccounts,
+        loans: expLoans,
+        other: expOther,
       },
       totalExpenses,
-      disposableIncome: netSalary - totalExpenses,
+      disposableIncome,
       carBudget: netSalary * 0.2,
       dtiRatio: netSalary > 0 ? totalExpenses / netSalary : 0,
       creditScore,
@@ -427,10 +581,8 @@ export default function DashboardPage() {
       localStorage.setItem('preferred_car_id', id);
       const rec = recommendations.find((r) => r.id === id);
       if (rec) localStorage.setItem('preferred_car_snapshot', JSON.stringify(rec));
-      // Persist to DB (fire-and-forget — local UI already updated)
       void setPreferredCarApi(id).catch(() => { /* silent fail */ });
       void startCarAdvisorChat(id, rec ?? null);
-      // Scroll to chat after a short delay so the section has rendered
       setTimeout(() => {
         carChatRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
@@ -507,7 +659,6 @@ export default function DashboardPage() {
       } else if (action.type === 'search_cars') {
         setCarChatLoading(true);
         try {
-          const netSalary = parseCurrencyValue(answers.net_salary ?? '0');
           const recs = normalizeRecs(await generateAiRecommendations({
             netSalary,
             creditScore: creditScore ?? 650,
@@ -517,7 +668,7 @@ export default function DashboardPage() {
           sessionStorage.setItem('recommendations', JSON.stringify(recs));
           sessionStorage.setItem('result_source', 'api');
         } catch {
-          // search failure is non-fatal — AI already told user it triggered search
+          // search failure is non-fatal
         } finally {
           setCarChatLoading(false);
         }
@@ -558,6 +709,106 @@ export default function DashboardPage() {
     }
   }
 
+  // UX-023: Toggle comparison
+  function toggleCompare(id: string) {
+    setCompareIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else if (next.size < 4) next.add(id);
+      return next;
+    });
+  }
+
+  // UX-024: Download PDF report
+  function downloadReport() {
+    const w = window.open('', '_blank');
+    if (!w) return;
+
+    const csExplanation = creditScore !== null ? getCreditScoreExplanation(creditScore) : null;
+
+    const recRows = recommendations.map((rec) => `
+      <tr>
+        <td style="padding:8px;border:1px solid #ddd;">${rec.car.make} ${rec.car.model}</td>
+        <td style="padding:8px;border:1px solid #ddd;">${rec.car.year ?? '-'}</td>
+        <td style="padding:8px;border:1px solid #ddd;">${formatCurrency(rec.car.price)}</td>
+        <td style="padding:8px;border:1px solid #ddd;">${formatCurrency(rec.loanCost)}</td>
+        <td style="padding:8px;border:1px solid #ddd;">${formatCurrency(rec.insuranceCost)}</td>
+        <td style="padding:8px;border:1px solid #ddd;">${formatCurrency(rec.fuelCost)}</td>
+        <td style="padding:8px;border:1px solid #ddd;">${formatCurrency(rec.maintenanceCost)}</td>
+        <td style="padding:8px;border:1px solid #ddd;font-weight:bold;">${formatCurrency(rec.estimatedMonthlyCost)}</td>
+        <td style="padding:8px;border:1px solid #ddd;">${Math.round(rec.score * 100)}%</td>
+      </tr>
+    `).join('');
+
+    const html = `<!DOCTYPE html>
+<html><head><title>FirstCar Recommendation Report</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 40px 20px; color: #333; }
+  h1 { color: #2563eb; margin-bottom: 4px; }
+  h2 { color: #1e40af; border-bottom: 2px solid #2563eb; padding-bottom: 8px; margin-top: 32px; }
+  .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 20px 0; }
+  .summary-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; text-align: center; }
+  .summary-card .value { font-size: 24px; font-weight: bold; color: #1e40af; }
+  .summary-card .label { font-size: 12px; color: #64748b; text-transform: uppercase; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  th { background: #2563eb; color: white; padding: 10px 8px; text-align: left; }
+  .breakdown { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+  .breakdown-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
+  .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8; text-align: center; }
+  @media print { body { padding: 10px; } }
+</style></head><body>
+<h1>FirstCar Recommendation Report</h1>
+<p style="color:#64748b;">Generated on ${new Date().toLocaleDateString('en-ZA', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+<p>Prepared for: <strong>${[answers.first_name, answers.last_name].filter(Boolean).join(' ') || email}</strong></p>
+
+<div class="summary">
+  <div class="summary-card"><div class="label">Credit Score</div><div class="value">${creditScore ?? 'N/A'}</div></div>
+  <div class="summary-card"><div class="label">Monthly Budget</div><div class="value">${formatCurrency(budget)}</div></div>
+  <div class="summary-card"><div class="label">Vehicles Found</div><div class="value">${recommendations.length}</div></div>
+</div>
+
+${creditScore !== null && csExplanation ? `
+<h2>Credit Score Analysis</h2>
+<p><strong>Score:</strong> ${creditScore} — <strong>${csExplanation.riskLevel}</strong></p>
+<p>${csExplanation.message}</p>
+<p><em>${csExplanation.impact}</em></p>
+` : ''}
+
+<h2>Affordability Breakdown</h2>
+<div class="breakdown">
+  <div>
+    <div class="breakdown-item"><span>Net Monthly Salary</span><span><strong>${formatCurrency(netSalary)}</strong></span></div>
+    <div class="breakdown-item"><span>Groceries</span><span>${formatCurrency(expGroceries)}</span></div>
+    <div class="breakdown-item"><span>Accounts</span><span>${formatCurrency(expAccounts)}</span></div>
+    <div class="breakdown-item"><span>Loans</span><span>${formatCurrency(expLoans)}</span></div>
+    <div class="breakdown-item"><span>Other Expenses</span><span>${formatCurrency(expOther)}</span></div>
+  </div>
+  <div>
+    <div class="breakdown-item"><span>Total Expenses</span><span><strong>${formatCurrency(totalExpenses)}</strong></span></div>
+    <div class="breakdown-item"><span>Disposable Income</span><span><strong>${formatCurrency(disposableIncome)}</strong></span></div>
+    <div class="breakdown-item"><span>Car Budget (20% of salary)</span><span style="color:#2563eb;font-weight:bold;">${formatCurrency(budget)}</span></div>
+  </div>
+</div>
+
+<h2>Recommended Vehicles</h2>
+<table>
+  <thead><tr>
+    <th>Vehicle</th><th>Year</th><th>Price</th><th>Loan</th><th>Insurance</th><th>Fuel</th><th>Maintenance</th><th>Total/mo</th><th>Match</th>
+  </tr></thead>
+  <tbody>${recRows}</tbody>
+</table>
+
+<div class="footer">
+  <p>This report is for informational purposes only. Actual costs may vary based on lending institution, insurance provider, and market conditions.</p>
+  <p>FirstCar &mdash; Your smart car recommendation partner</p>
+</div>
+</body></html>`;
+
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => w.print(), 500);
+  }
+
   const preferredCar = recommendations.find((r) => r.id === preferredCarId) ?? null;
 
   const EDITABLE_KEYS = new Set([
@@ -570,15 +821,38 @@ export default function DashboardPage() {
 const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
 
   const selectedBrands = (answers.preferred_brand ?? '').split(',').filter(Boolean);
-  const filteredRecommendations =
-    brandFilter === 'all' || selectedBrands.length === 0
-      ? recommendations
-      : recommendations.filter((r) => carMatchesBrand(r.car.make, brandFilter));
+
+  // UX-025: Apply all filters
+  const filteredRecommendations = recommendations.filter((r) => {
+    if (brandFilter !== 'all' && selectedBrands.length > 0 && !carMatchesBrand(r.car.make, brandFilter)) return false;
+    if (filters.fuelType !== 'all' && r.car.fuelType && r.car.fuelType.toLowerCase() !== filters.fuelType) return false;
+    if (filters.transmission !== 'all' && r.car.transmission && r.car.transmission.toLowerCase() !== filters.transmission) return false;
+    if (filters.maxMonthlyCost !== 'all') {
+      const max = parseInt(filters.maxMonthlyCost);
+      if (r.estimatedMonthlyCost > max) return false;
+    }
+    return true;
+  });
+
+  // UX-019: Compute rejected vehicles (over budget)
+  const rejectedVehicles = recommendations.length > 0 && budget > 0
+    ? recommendations
+        .filter((r) => r.estimatedMonthlyCost > budget)
+        .map((r) => ({
+          ...r,
+          reason: `Exceeds budget by ${formatCurrency(r.estimatedMonthlyCost - budget)}/mo`,
+        }))
+    : [];
+
+  const bestMatchScore = recommendations.length > 0 ? Math.max(...recommendations.map((r) => r.score)) : 0;
+
+  // Vehicles selected for comparison
+  const compareRecs = recommendations.filter((r) => compareIds.has(r.id));
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
 
-      {/* ── Mobile backdrop ── */}
+      {/* Mobile backdrop */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/40 md:hidden"
@@ -586,7 +860,7 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
         />
       )}
 
-      {/* ── Sidebar ── */}
+      {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 flex flex-col transition-transform duration-200 ease-in-out md:sticky md:top-0 md:h-screen md:w-56 md:shrink-0 md:translate-x-0 md:z-auto ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         {/* Brand */}
         <div className="px-5 py-5 border-b border-gray-100">
@@ -642,7 +916,7 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
               <rect x="2" y="6.5" width="12" height="3" rx="1" fill="currentColor" opacity="0.5"/>
               <rect x="2" y="11" width="8" height="3" rx="1" fill="currentColor" opacity="0.35"/>
             </svg>
-            Search Logs
+            History
           </button>
         </nav>
 
@@ -679,7 +953,7 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
         </div>
       </aside>
 
-      {/* ── Main content ── */}
+      {/* Main content */}
       <div className="flex-1 min-w-0 flex flex-col">
 
         {/* Mobile top header */}
@@ -709,12 +983,12 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
         <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 md:py-10 flex flex-col gap-6 md:gap-8 pb-24 md:pb-10">
 
           {activeView === 'logs' ? (
-            /* ── Logs view ── */
+            /* ── UX-021: Recommendation History view ── */
             <section className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
               <div className="flex items-center justify-between mb-5">
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-900">Search Logs</h2>
-                  <p className="text-sm text-gray-500 mt-0.5">History of your car recommendation searches</p>
+                  <h2 className="text-lg font-semibold text-gray-900">Recommendation History</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">Track your recommendation assessments and compare results over time</p>
                 </div>
                 {searchLog.length > 0 && (
                   <button
@@ -735,43 +1009,77 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                       <rect x="2" y="11" width="8" height="3" rx="1" fill="#9ca3af" opacity="0.35"/>
                     </svg>
                   </div>
-                  <p className="text-sm text-gray-500">No searches logged yet. Complete the questionnaire to see your search history here.</p>
+                  <p className="text-sm text-gray-500">No recommendation history yet. Complete the questionnaire to start tracking your recommendations.</p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {searchLog.map((entry) => {
+                <div className="space-y-4">
+                  {searchLog.map((entry, entryIdx) => {
                     const date = new Date(entry.timestamp);
                     const timeAgo = (() => {
                       const secs = Math.floor((Date.now() - entry.timestamp) / 1000);
                       if (secs < 60) return 'Just now';
                       if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
                       if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
-                      return date.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' });
+                      return date.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
                     })();
+
+                    // Compare with previous entry
+                    const prevEntry = searchLog[entryIdx + 1];
+                    const budgetChange = prevEntry ? entry.budget - prevEntry.budget : 0;
+                    const countChange = prevEntry ? entry.resultCount - prevEntry.resultCount : 0;
+
                     return (
-                      <div key={entry.id} className="flex items-start gap-4 p-4 rounded-xl border border-gray-100 bg-gray-50 hover:bg-gray-100 transition-colors">
-                        <div className={`h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-xs font-bold text-white ${entry.source === 'api' ? 'bg-green-500' : 'bg-blue-400'}`}>
-                          {entry.source === 'api' ? 'API' : 'AI'}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2 mb-1">
-                            <p className="text-sm font-semibold text-gray-800">
-                              {entry.resultCount} car{entry.resultCount !== 1 ? 's' : ''} found
+                      <div key={entry.id} className="rounded-xl border border-gray-100 bg-gray-50 hover:bg-gray-100 transition-colors overflow-hidden">
+                        <div className="flex items-start gap-4 p-4">
+                          <div className={`h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-xs font-bold text-white ${entry.source === 'api' ? 'bg-green-500' : 'bg-blue-400'}`}>
+                            {entry.source === 'api' ? 'API' : 'AI'}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <p className="text-sm font-semibold text-gray-800">
+                                {entry.resultCount} car{entry.resultCount !== 1 ? 's' : ''} found
+                                {countChange !== 0 && (
+                                  <span className={`ml-2 text-xs font-medium ${countChange > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                    ({countChange > 0 ? '+' : ''}{countChange} vs previous)
+                                  </span>
+                                )}
+                              </p>
+                              <span className="text-xs text-gray-400 shrink-0">{timeAgo}</span>
+                            </div>
+                            <p className="text-xs text-gray-500 mb-1.5">
+                              Budget: <span className="font-medium text-gray-700">{formatCurrency(entry.budget)}/mo</span>
+                              {budgetChange !== 0 && (
+                                <span className={`ml-1 ${budgetChange > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                  ({budgetChange > 0 ? '+' : ''}{formatCurrency(budgetChange)})
+                                </span>
+                              )}
                             </p>
-                            <span className="text-xs text-gray-400 shrink-0">{timeAgo}</span>
-                          </div>
-                          <p className="text-xs text-gray-500 mb-1.5">Budget: <span className="font-medium text-gray-700">{formatCurrency(entry.budget)}/mo</span></p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {Object.entries(entry.filters).map(([k, v]) =>
-                              v && v !== 'Any' ? (
-                                <span key={k} className="px-2 py-0.5 rounded-md bg-white border border-gray-200 text-gray-600 text-xs capitalize">{v}</span>
-                              ) : null
-                            )}
-                            {Object.values(entry.filters).every((v) => !v || v === 'Any') && (
-                              <span className="text-xs text-gray-400">No filters applied</span>
-                            )}
+                            <div className="flex flex-wrap gap-1.5">
+                              {Object.entries(entry.filters).map(([k, v]) =>
+                                v && v !== 'Any' ? (
+                                  <span key={k} className="px-2 py-0.5 rounded-md bg-white border border-gray-200 text-gray-600 text-xs capitalize">{v}</span>
+                                ) : null
+                              )}
+                              {Object.values(entry.filters).every((v) => !v || v === 'Any') && (
+                                <span className="text-xs text-gray-400">No filters applied</span>
+                              )}
+                            </div>
                           </div>
                         </div>
+                        {/* Show top recommendations from this search */}
+                        {entry.recommendations && entry.recommendations.length > 0 && (
+                          <div className="border-t border-gray-200 bg-white px-4 py-3">
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Top vehicles</p>
+                            <div className="space-y-1.5">
+                              {entry.recommendations.slice(0, 3).map((r, i) => (
+                                <div key={i} className="flex items-center justify-between text-xs text-gray-600">
+                                  <span className="font-medium text-gray-800">{r.make} {r.model}</span>
+                                  <span>{formatCurrency(r.monthlyCost)}/mo &middot; {Math.round(r.score * 100)}% match</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -824,7 +1132,7 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                         {[answers.first_name, answers.last_name].filter(Boolean).join(' ')}
                       </p>
                     )}
-                    <p className="text-sm text-gray-500 truncate">{email || '—'}</p>
+                    <p className="text-sm text-gray-500 truncate">{email || '\u2014'}</p>
                     {budget > 0 && (
                       <p className="text-xs text-gray-400 mt-0.5">
                         Monthly budget (20%): <span className="font-semibold text-blue-600">{formatCurrency(budget)}</span>
@@ -887,6 +1195,170 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
           ) : (
             /* ── Dashboard view ── */
             <>
+              {/* UX-027: Dashboard Summary Card */}
+              {hasSubmittedForm && (
+                <section className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Your Overview</h2>
+                    <div className="flex gap-2">
+                      {recommendations.length > 0 && (
+                        <button
+                          onClick={downloadReport}
+                          className="flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 transition-colors"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                            <path d="M8 2v8M5 7l3 3 3-3M3 12h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          Download Report
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    {/* Credit Score */}
+                    <button
+                      onClick={() => setShowCreditInfo(!showCreditInfo)}
+                      className="bg-gray-50 rounded-xl p-3 text-center hover:bg-gray-100 transition-colors text-left"
+                    >
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Credit Score</p>
+                      {creditScore !== null ? (
+                        <>
+                          <p className={`text-2xl font-bold mt-1 ${getCreditScoreRating(creditScore).color}`}>{creditScore}</p>
+                          <p className={`text-xs font-semibold ${getCreditScoreRating(creditScore).color}`}>{getCreditScoreRating(creditScore).label}</p>
+                        </>
+                      ) : (
+                        <p className="text-2xl font-bold mt-1 text-gray-300">--</p>
+                      )}
+                    </button>
+
+                    {/* Monthly Budget */}
+                    <button
+                      onClick={() => setShowAffordability(!showAffordability)}
+                      className="bg-gray-50 rounded-xl p-3 text-center hover:bg-gray-100 transition-colors text-left"
+                    >
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Monthly Budget</p>
+                      <p className="text-2xl font-bold mt-1 text-blue-600">{budget > 0 ? formatCurrency(budget) : '--'}</p>
+                      <p className="text-xs text-gray-400">20% of salary</p>
+                    </button>
+
+                    {/* Province */}
+                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Province</p>
+                      <p className="text-lg font-bold mt-1 text-gray-800 truncate">{answers.location || '--'}</p>
+                      {answers.location && PROVINCE_CITY[answers.location] && (
+                        <p className="text-xs text-gray-400">{PROVINCE_CITY[answers.location]}</p>
+                      )}
+                    </div>
+
+                    {/* Recommendations */}
+                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Vehicles Found</p>
+                      <p className="text-2xl font-bold mt-1 text-gray-800">{recommendations.length}</p>
+                      {resultSource && (
+                        <p className="text-xs text-gray-400">{resultSource === 'mock' ? 'Mock data' : 'Live'}</p>
+                      )}
+                    </div>
+
+                    {/* Best Match */}
+                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Best Match</p>
+                      <p className="text-2xl font-bold mt-1 text-green-600">{bestMatchScore > 0 ? `${Math.round(bestMatchScore * 100)}%` : '--'}</p>
+                      <p className="text-xs text-gray-400">Match score</p>
+                    </div>
+                  </div>
+
+                  {/* UX-016: Credit Score Explanation */}
+                  {showCreditInfo && creditScore !== null && (() => {
+                    const explanation = getCreditScoreExplanation(creditScore);
+                    const rating = getCreditScoreRating(creditScore);
+                    const pct = Math.min(100, Math.max(0, ((creditScore - 300) / (850 - 300)) * 100));
+                    return (
+                      <div className={`mt-4 rounded-xl border p-4 ${rating.bg}`}>
+                        <div className="flex items-start gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <p className={`text-sm font-bold ${rating.color}`}>Credit Score: {creditScore}</p>
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${rating.color} bg-white/60`}>
+                                {explanation.riskLevel}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-700 mb-2">{explanation.message}</p>
+                            <p className="text-xs text-gray-500">
+                              <span className="font-semibold">Impact on your recommendations:</span> {explanation.impact}
+                            </p>
+                            <div className="mt-3 h-2 w-full rounded-full bg-gray-200 max-w-xs">
+                              <div className={`h-2 rounded-full ${rating.bar} transition-all`} style={{ width: `${pct}%` }} />
+                            </div>
+                            <div className="flex justify-between text-xs text-gray-400 mt-1 max-w-xs">
+                              <span>300</span>
+                              <span>500</span>
+                              <span>650</span>
+                              <span>750</span>
+                              <span>850</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* UX-017: Affordability Breakdown */}
+                  {showAffordability && netSalary > 0 && (
+                    <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                      <h3 className="text-sm font-bold text-blue-800 mb-3">How your budget was calculated</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600">Net Monthly Salary</span>
+                            <span className="font-bold text-gray-900">{formatCurrency(netSalary)}</span>
+                          </div>
+                          <hr className="border-blue-100" />
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Groceries</span>
+                            <span className="text-gray-700">- {formatCurrency(expGroceries)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Accounts</span>
+                            <span className="text-gray-700">- {formatCurrency(expAccounts)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Loans</span>
+                            <span className="text-gray-700">- {formatCurrency(expLoans)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Other Expenses</span>
+                            <span className="text-gray-700">- {formatCurrency(expOther)}</span>
+                          </div>
+                          <hr className="border-blue-100" />
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600 font-medium">Total Expenses</span>
+                            <span className="font-bold text-red-600">- {formatCurrency(totalExpenses)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600 font-medium">Disposable Income</span>
+                            <span className="font-bold text-gray-900">{formatCurrency(disposableIncome)}</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col justify-center items-center bg-white rounded-xl p-4 border border-blue-100">
+                          <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Car Budget (20% Rule)</p>
+                          <p className="text-3xl font-extrabold text-blue-600">{formatCurrency(budget)}</p>
+                          <p className="text-xs text-gray-500 mt-1">= {formatCurrency(netSalary)} x 20%</p>
+                          <div className="mt-3 w-full bg-gray-200 rounded-full h-3">
+                            <div
+                              className="bg-blue-500 h-3 rounded-full transition-all"
+                              style={{ width: `${Math.min(100, (budget / netSalary) * 100)}%` }}
+                            />
+                          </div>
+                          <p className="text-xs text-gray-400 mt-1">
+                            {netSalary > 0 ? `${Math.round((totalExpenses / netSalary) * 100)}% DTI ratio` : ''}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              )}
+
               {/* Preferred car quick-view banner */}
               {preferredCar && (
                 <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-4">
@@ -918,6 +1390,34 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                   <h2 className="text-lg font-semibold text-gray-900">Your car matches</h2>
                   <div className="flex flex-wrap items-center gap-2">
+                    {/* UX-023: Compare button */}
+                    {compareIds.size >= 2 && (
+                      <button
+                        onClick={() => setShowCompareModal(true)}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg px-3 py-1.5 hover:bg-blue-700 transition-colors"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                          <path d="M2 3h5v10H2zM9 3h5v10H9z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" fill="none"/>
+                        </svg>
+                        Compare ({compareIds.size})
+                      </button>
+                    )}
+
+                    {/* UX-025: Filter toggle */}
+                    {recommendations.length > 0 && (
+                      <button
+                        onClick={() => setShowFilters(!showFilters)}
+                        className={`flex items-center gap-1.5 text-xs border rounded-lg px-3 py-1.5 transition-colors ${
+                          showFilters ? 'bg-blue-50 text-blue-700 border-blue-200' : 'text-gray-500 border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                          <path d="M2 3h12L9 8.5V13l-2-1V8.5L2 3z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" fill="none"/>
+                        </svg>
+                        Filters
+                      </button>
+                    )}
+
                     {resultSource && recommendations.length > 0 && (
                       <span className="text-xs text-gray-400">
                         {resultSource === 'mock' ? 'Mock data' : 'Live recommendations'}
@@ -926,8 +1426,64 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                   </div>
                 </div>
 
+                {/* UX-025: Filters panel */}
+                {showFilters && recommendations.length > 0 && (
+                  <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div>
+                        <label className="text-xs text-gray-500 font-medium block mb-1">Fuel Type</label>
+                        <select
+                          value={filters.fuelType}
+                          onChange={(e) => setFilters((f) => ({ ...f, fuelType: e.target.value }))}
+                          className="w-full rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 text-sm text-gray-700 outline-none focus:border-blue-400"
+                        >
+                          <option value="all">All</option>
+                          <option value="petrol">Petrol</option>
+                          <option value="diesel">Diesel</option>
+                          <option value="hybrid">Hybrid</option>
+                          <option value="electric">Electric</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 font-medium block mb-1">Transmission</label>
+                        <select
+                          value={filters.transmission}
+                          onChange={(e) => setFilters((f) => ({ ...f, transmission: e.target.value }))}
+                          className="w-full rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 text-sm text-gray-700 outline-none focus:border-blue-400"
+                        >
+                          <option value="all">All</option>
+                          <option value="manual">Manual</option>
+                          <option value="automatic">Automatic</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 font-medium block mb-1">Max Monthly Cost</label>
+                        <select
+                          value={filters.maxMonthlyCost}
+                          onChange={(e) => setFilters((f) => ({ ...f, maxMonthlyCost: e.target.value }))}
+                          className="w-full rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 text-sm text-gray-700 outline-none focus:border-blue-400"
+                        >
+                          <option value="all">No limit</option>
+                          <option value="3000">Under R 3,000</option>
+                          <option value="5000">Under R 5,000</option>
+                          <option value="7000">Under R 7,000</option>
+                          <option value="10000">Under R 10,000</option>
+                          <option value="15000">Under R 15,000</option>
+                        </select>
+                      </div>
+                      <div className="flex items-end">
+                        <button
+                          onClick={() => { setFilters({ fuelType: 'all', transmission: 'all', carType: 'all', maxMonthlyCost: 'all' }); setBrandFilter('all'); }}
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 hover:bg-gray-50 transition-colors"
+                        >
+                          Reset all
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
-
+                {/* Brand filter chips */}
                 {selectedBrands.length > 0 && recommendations.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-5">
                     <button
@@ -962,18 +1518,55 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
 
                 {recommendations.length === 0 ? (
                   hasSubmittedForm ? (
+                    /* UX-022: Improved empty state */
                     <div className="bg-white rounded-2xl border border-amber-200 bg-amber-50 p-8 sm:p-12 flex flex-col items-center text-center gap-4">
-                      <div className="h-14 w-14 rounded-full bg-amber-100 flex items-center justify-center text-2xl">⚠</div>
-                      <div>
-                        <p className="font-semibold text-gray-900">No vehicles match your affordability range</p>
-                        <p className="mt-1 text-sm text-gray-500">Try adjusting your preferences or updating your income details.</p>
+                      <div className="h-14 w-14 rounded-full bg-amber-100 flex items-center justify-center text-2xl">
+                        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                          <circle cx="14" cy="14" r="12" stroke="#f59e0b" strokeWidth="2" fill="none"/>
+                          <path d="M14 8v6M14 18h.01" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round"/>
+                        </svg>
                       </div>
-                      <button
-                        onClick={() => setActiveView('profile')}
-                        className="mt-2 rounded-lg bg-blue-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-600"
-                      >
-                        Adjust preferences
-                      </button>
+                      <div>
+                        <p className="text-lg font-semibold text-gray-900">No vehicles currently match your affordability range</p>
+                        <p className="mt-2 text-sm text-gray-600 max-w-md mx-auto">
+                          This usually happens when your monthly budget is below the minimum vehicle cost in our database.
+                          Here are some steps that might help:
+                        </p>
+                      </div>
+                      <div className="text-left bg-white rounded-xl border border-amber-100 p-4 w-full max-w-md">
+                        <ul className="space-y-2.5 text-sm text-gray-700">
+                          <li className="flex items-start gap-2">
+                            <span className="shrink-0 h-5 w-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold mt-0.5">1</span>
+                            <span><strong>Increase your budget</strong> by reviewing your monthly expenses for potential savings</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="shrink-0 h-5 w-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold mt-0.5">2</span>
+                            <span><strong>Update your financial information</strong> if your income has changed recently</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="shrink-0 h-5 w-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold mt-0.5">3</span>
+                            <span><strong>Explore lower-priced vehicle categories</strong> such as older models or smaller hatchbacks</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="shrink-0 h-5 w-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold mt-0.5">4</span>
+                            <span><strong>Improve your credit score</strong> to qualify for better interest rates and lower insurance</span>
+                          </li>
+                        </ul>
+                      </div>
+                      <div className="flex gap-3 mt-2">
+                        <button
+                          onClick={() => setActiveView('profile')}
+                          className="rounded-lg bg-blue-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-600"
+                        >
+                          Update profile
+                        </button>
+                        <button
+                          onClick={() => router.push('/form')}
+                          className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
+                        >
+                          Retake questionnaire
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="bg-white rounded-2xl border border-gray-200 p-8 sm:p-12 flex flex-col items-center text-center gap-4">
@@ -1000,13 +1593,16 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                   )
                 ) : filteredRecommendations.length === 0 ? (
                   <div className="bg-white rounded-2xl border border-gray-200 p-10 flex flex-col items-center text-center gap-3">
-                    <p className="font-semibold text-gray-900">No cars found for {getBrandDisplayName(brandFilter)}</p>
-                    <p className="text-sm text-gray-500">The AI did not return any {getBrandDisplayName(brandFilter)} vehicles in your affordability range.</p>
+                    <p className="font-semibold text-gray-900">No cars match your current filters</p>
+                    <p className="text-sm text-gray-500">
+                      {brandFilter !== 'all' && `No ${getBrandDisplayName(brandFilter)} vehicles found. `}
+                      Try adjusting your filter criteria to see more results.
+                    </p>
                     <button
-                      onClick={() => setBrandFilter('all')}
+                      onClick={() => { setBrandFilter('all'); setFilters({ fuelType: 'all', transmission: 'all', carType: 'all', maxMonthlyCost: 'all' }); }}
                       className="mt-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
                     >
-                      Show all brands
+                      Reset all filters
                     </button>
                   </div>
                 ) : (
@@ -1015,6 +1611,11 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                       const isPreferred = preferredCarId === rec.id;
                       const matchPct = Math.round(rec.score * 100);
                       const matchColor = matchPct >= 85 ? 'bg-green-500' : matchPct >= 70 ? 'bg-amber-500' : 'bg-gray-500';
+                      const badges = computeBadges(rec, recommendations, budget);
+                      const confidence = computeConfidenceScore(rec, budget, creditScore, answers.years_licenced ?? '');
+                      const explanation = getRecommendationExplanation(rec, budget, creditScore);
+                      const isComparing = compareIds.has(rec.id);
+                      const remainingBudget = budget - rec.estimatedMonthlyCost;
 
                       return (
                         <article
@@ -1022,10 +1623,12 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                           className={`bg-white rounded-2xl overflow-hidden flex flex-col border transition-all duration-200 ${
                             isPreferred
                               ? 'border-amber-400 shadow-lg shadow-amber-100'
+                              : isComparing
+                              ? 'border-blue-400 shadow-md shadow-blue-50'
                               : 'border-gray-200 hover:shadow-md hover:border-gray-300'
                           }`}
                         >
-                          {/* ── Image hero ── */}
+                          {/* Image hero */}
                           <div className="relative h-48 bg-gradient-to-br from-slate-200 to-slate-300 shrink-0 overflow-hidden">
                             {rec.car.imageUrl ? (
                               <img
@@ -1045,25 +1648,43 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                                 </svg>
                               </div>
                             )}
-                            {/* Gradient overlay */}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-black/10" />
 
                             {/* Preferred banner */}
                             {isPreferred && (
                               <div className="absolute top-0 inset-x-0 bg-amber-500 text-white text-xs font-bold text-center py-1.5 tracking-wide">
-                                ★ YOUR PREFERRED CAR
+                                YOUR PREFERRED CAR
                               </div>
                             )}
 
                             {/* Top badges */}
-                            <div className={`absolute ${isPreferred ? 'top-9' : 'top-3'} left-3`}>
+                            <div className={`absolute ${isPreferred ? 'top-9' : 'top-3'} left-3 flex items-center gap-1.5`}>
                               <span className="bg-black/50 backdrop-blur-sm text-white text-xs font-bold px-2.5 py-1 rounded-full">
                                 #{idx + 1}
                               </span>
                             </div>
 
+                            {/* UX-023: Compare checkbox */}
+                            <button
+                              onClick={() => toggleCompare(rec.id)}
+                              className={`absolute ${isPreferred ? 'top-9' : 'top-3'} right-3 h-7 w-7 rounded-full flex items-center justify-center transition-colors ${
+                                isComparing ? 'bg-blue-500 text-white' : 'bg-black/30 backdrop-blur-sm text-white/70 hover:bg-black/50'
+                              }`}
+                              title={isComparing ? 'Remove from comparison' : 'Add to comparison'}
+                            >
+                              {isComparing ? (
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                                  <path d="M3 8l3.5 3.5L13 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              ) : (
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                                  <path d="M2 3h5v10H2zM9 3h5v10H9z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" fill="none"/>
+                                </svg>
+                              )}
+                            </button>
+
                             {/* Bottom of image: match score badge */}
-                            <div className="absolute bottom-3 left-3">
+                            <div className="absolute bottom-3 left-3 flex items-center gap-1.5 flex-wrap">
                               <span className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold text-white ${matchColor}`}>
                                 <svg width="9" height="9" viewBox="0 0 9 9" fill="currentColor">
                                   <path d="M4.5 0l.9 2.8H8.6L6 4.5l.9 2.8L4.5 5.8 2.1 7.3 3 4.5.4 2.8h3.2z"/>
@@ -1073,8 +1694,19 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                             </div>
                           </div>
 
-                          {/* ── Card body ── */}
+                          {/* Card body */}
                           <div className="flex flex-col flex-1 p-5">
+                            {/* UX-018: Badges */}
+                            {badges.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mb-3">
+                                {badges.map((badge) => (
+                                  <span key={badge.label} className={`px-2 py-0.5 rounded-md text-xs font-semibold ${badge.color}`}>
+                                    {badge.label}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
                             {/* Make / Model / Specs */}
                             <div className="mb-4">
                               <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-0.5">{rec.car.make}</p>
@@ -1087,12 +1719,17 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                               </div>
                             </div>
 
+                            {/* UX-028: Recommendation Explanation */}
+                            <div className="mb-4 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5">
+                              <p className="text-xs font-semibold text-blue-700 mb-0.5">Why recommended</p>
+                              <p className="text-xs text-blue-600">{explanation}</p>
+                            </div>
+
                             {/* Price */}
                             <div className="flex items-baseline justify-between pb-4 border-b border-gray-100 mb-4">
                               <span className="text-xs text-gray-400 font-medium">Asking price</span>
                               <span className="text-2xl font-extrabold text-gray-900 tracking-tight">{formatCurrency(rec.car.price)}</span>
                             </div>
-
 
                             {/* Monthly costs */}
                             <div className="flex-1 mb-4">
@@ -1114,6 +1751,34 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                                 <span className="text-sm font-bold text-gray-900">Total / month</span>
                                 <span className="text-xl font-extrabold text-blue-600">{formatCurrency(rec.estimatedMonthlyCost)}</span>
                               </div>
+                              {/* Budget remaining */}
+                              {budget > 0 && (
+                                <div className="flex justify-between items-center mt-2">
+                                  <span className="text-xs text-gray-400">Budget remaining</span>
+                                  <span className={`text-xs font-semibold ${remainingBudget >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                    {remainingBudget >= 0 ? '+' : ''}{formatCurrency(remainingBudget)}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* UX-020: Confidence Score */}
+                            <div className="mb-4">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs text-gray-400 font-medium">Confidence Score</span>
+                                <span className={`text-xs font-bold ${confidence >= 75 ? 'text-green-600' : confidence >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+                                  {confidence}%
+                                </span>
+                              </div>
+                              <div className="h-1.5 w-full rounded-full bg-gray-100">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all ${confidence >= 75 ? 'bg-green-500' : confidence >= 50 ? 'bg-amber-400' : 'bg-red-400'}`}
+                                  style={{ width: `${confidence}%` }}
+                                />
+                              </div>
+                              <p className="text-xs text-gray-400 mt-1">
+                                Based on affordability, credit score, driving experience & preferences
+                              </p>
                             </div>
 
                             {/* Prefer button */}
@@ -1128,7 +1793,7 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                               <svg width="15" height="15" viewBox="0 0 16 16" fill={isPreferred ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
                                 <path d="M8 14S1.5 10 1.5 5.5a3.5 3.5 0 0 1 6.5-1.8 3.5 3.5 0 0 1 6.5 1.8C14.5 10 8 14 8 14Z"/>
                               </svg>
-                              {isPreferred ? '✓ This is my preferred car' : 'Select as preferred car'}
+                              {isPreferred ? 'This is my preferred car' : 'Select as preferred car'}
                             </button>
                           </div>
                         </article>
@@ -1137,6 +1802,49 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                   </div>
                 )}
               </section>
+
+              {/* UX-019: Rejection Reasons */}
+              {rejectedVehicles.length > 0 && recommendations.length > 0 && (
+                <section className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6">
+                  <button
+                    onClick={() => setShowRejected(!showRejected)}
+                    className="flex items-center justify-between w-full text-left"
+                  >
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700">
+                        {rejectedVehicles.length} vehicle{rejectedVehicles.length !== 1 ? 's' : ''} over budget
+                      </h3>
+                      <p className="text-xs text-gray-400 mt-0.5">See why some vehicles weren&apos;t a perfect fit</p>
+                    </div>
+                    <svg
+                      width="16" height="16" viewBox="0 0 16 16" fill="none"
+                      className={`text-gray-400 transition-transform ${showRejected ? 'rotate-180' : ''}`}
+                    >
+                      <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                  {showRejected && (
+                    <div className="mt-4 space-y-2">
+                      {rejectedVehicles.map((rec) => (
+                        <div key={rec.id} className="flex items-center justify-between p-3 rounded-lg bg-red-50 border border-red-100">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                                <path d="M8 4v4M8 12h.01" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"/>
+                              </svg>
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-800 truncate">{rec.car.make} {rec.car.model}</p>
+                              <p className="text-xs text-gray-500">{formatCurrency(rec.estimatedMonthlyCost)}/mo</p>
+                            </div>
+                          </div>
+                          <span className="text-xs font-medium text-red-600 shrink-0 ml-2">{rec.reason}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
 
               {/* Preferred car + AI advisor chat */}
               {preferredCar && (
@@ -1164,7 +1872,6 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
 
                   {/* Chat */}
                   <div className="flex flex-col h-[28rem]">
-                    {/* Messages */}
                     <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3 bg-gray-50">
                       {carChatLoading && carChatMessages.length === 0 && (
                         <div className="flex gap-2 items-center text-gray-400 text-sm px-1">
@@ -1173,7 +1880,7 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                             <span className="h-2 w-2 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: '150ms' }} />
                             <span className="h-2 w-2 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: '300ms' }} />
                           </div>
-                          Advisor is thinking…
+                          Advisor is thinking...
                         </div>
                       )}
                       {carChatMessages.map((msg, i) => (
@@ -1198,7 +1905,7 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                       )}
                     </div>
 
-                    {/* Suggested questions — shown until user sends first message */}
+                    {/* Suggested questions */}
                     {carChatMessages.filter((m) => m.role === 'user').length === 0 && !carChatLoading && (
                       <div className="px-3 pt-2 pb-1 flex gap-2 flex-wrap border-t border-gray-100 bg-white">
                         {[
@@ -1227,7 +1934,7 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                         value={carChatInput}
                         onChange={(e) => setCarChatInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendCarChat(); } }}
-                        placeholder="Ask about this car…"
+                        placeholder="Ask about this car..."
                         disabled={carChatLoading}
                         className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50 disabled:opacity-50"
                       />
@@ -1288,12 +1995,112 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
               <rect x="2" y="6.5" width="12" height="3" rx="1" fill="currentColor" opacity={activeView === 'logs' ? '0.7' : '0.35'}/>
               <rect x="2" y="11" width="8" height="3" rx="1" fill="currentColor" opacity={activeView === 'logs' ? '0.5' : '0.25'}/>
             </svg>
-            Logs
+            History
           </button>
         </nav>
       </div>
 
-      {/* ── Delete account modal ── */}
+      {/* UX-023: Vehicle Comparison Modal */}
+      {showCompareModal && compareRecs.length >= 2 && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl my-8">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Vehicle Comparison</h3>
+              <button
+                onClick={() => setShowCompareModal(false)}
+                className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide w-40">Attribute</th>
+                    {compareRecs.map((rec) => (
+                      <th key={rec.id} className="text-center px-4 py-3 min-w-[160px]">
+                        {rec.car.imageUrl && (
+                          <img src={rec.car.imageUrl} alt="" className="h-20 w-full rounded-lg object-cover mb-2" />
+                        )}
+                        <p className="text-xs text-blue-600 font-bold">{rec.car.make}</p>
+                        <p className="text-sm font-bold text-gray-900">{rec.car.model}</p>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { label: 'Year', get: (r: Recommendation) => String(r.car.year ?? '-') },
+                    { label: 'Price', get: (r: Recommendation) => formatCurrency(r.car.price) },
+                    { label: 'Fuel Type', get: (r: Recommendation) => r.car.fuelType ?? '-' },
+                    { label: 'Transmission', get: (r: Recommendation) => r.car.transmission ?? '-' },
+                    { label: 'Mileage', get: (r: Recommendation) => r.car.mileage != null ? `${r.car.mileage.toLocaleString()} km` : '-' },
+                    { label: 'Match Score', get: (r: Recommendation) => `${Math.round(r.score * 100)}%` },
+                    { label: 'Confidence', get: (r: Recommendation) => `${computeConfidenceScore(r, budget, creditScore, answers.years_licenced ?? '')}%` },
+                    { label: 'Loan / mo', get: (r: Recommendation) => formatCurrency(r.loanCost) },
+                    { label: 'Insurance / mo', get: (r: Recommendation) => formatCurrency(r.insuranceCost) },
+                    { label: 'Fuel / mo', get: (r: Recommendation) => formatCurrency(r.fuelCost) },
+                    { label: 'Maintenance / mo', get: (r: Recommendation) => formatCurrency(r.maintenanceCost) },
+                    { label: 'Total / mo', get: (r: Recommendation) => formatCurrency(r.estimatedMonthlyCost) },
+                    { label: 'Budget Remaining', get: (r: Recommendation) => {
+                      const rem = budget - r.estimatedMonthlyCost;
+                      return rem >= 0 ? `+${formatCurrency(rem)}` : formatCurrency(rem);
+                    }},
+                  ].map(({ label, get }) => (
+                    <tr key={label} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="px-4 py-2.5 text-xs font-semibold text-gray-500">{label}</td>
+                      {compareRecs.map((rec) => {
+                        // Highlight best value for certain rows
+                        const val = get(rec);
+                        const isTotalRow = label === 'Total / mo';
+                        const isMatchRow = label === 'Match Score' || label === 'Confidence';
+                        let isBest = false;
+                        if (isTotalRow) {
+                          const minCost = Math.min(...compareRecs.map((r) => r.estimatedMonthlyCost));
+                          isBest = rec.estimatedMonthlyCost === minCost;
+                        }
+                        if (isMatchRow) {
+                          const maxScore = Math.max(...compareRecs.map((r) => r.score));
+                          isBest = rec.score === maxScore;
+                        }
+                        return (
+                          <td
+                            key={rec.id}
+                            className={`px-4 py-2.5 text-center capitalize ${
+                              isTotalRow ? 'font-bold text-blue-600' : ''
+                            } ${isBest ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-700'}`}
+                          >
+                            {val}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-between items-center">
+              <button
+                onClick={() => { setCompareIds(new Set()); setShowCompareModal(false); }}
+                className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                Clear selection
+              </button>
+              <button
+                onClick={() => setShowCompareModal(false)}
+                className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600 transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete account modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
