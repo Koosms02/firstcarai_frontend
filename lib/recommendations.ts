@@ -171,6 +171,44 @@ function dbRowToRecommendation(row: {
   };
 }
 
+export function friendlyError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : '';
+
+  if (err instanceof TypeError || /failed to fetch|network/i.test(msg)) {
+    return 'Unable to connect. Please check your internet connection and try again.';
+  }
+  if (/timeout/i.test(msg)) {
+    return 'The request is taking longer than expected. Please try again.';
+  }
+  if (/invalid credentials/i.test(msg)) {
+    return 'Incorrect email or password. Please try again.';
+  }
+  if (/email already in use/i.test(msg)) {
+    return 'An account with this email already exists. Please sign in instead.';
+  }
+  if (/unauthorized|401/i.test(msg)) {
+    return 'Your session has expired. Please sign in again.';
+  }
+  if (/user not logged in/i.test(msg)) {
+    return 'Your session has expired. Please sign in again.';
+  }
+  if (/invalid reset code/i.test(msg)) {
+    return 'This reset link is invalid or has expired. Please request a new one.';
+  }
+  // Pass through already-friendly reset password messages
+  if (/no password reset was requested|reset code has expired/i.test(msg)) {
+    return msg;
+  }
+  if (/internal server error|500|prisma|database|column/i.test(msg)) {
+    return 'Something went wrong on our end. Please try again later.';
+  }
+  if (/502|503|504/i.test(msg)) {
+    return 'The service is temporarily unavailable. Please try again in a moment.';
+  }
+  if (!msg) return 'Something went wrong. Please try again.';
+  return msg;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,

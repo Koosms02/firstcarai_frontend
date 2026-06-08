@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { isUsingMockData, submitQuestionnaire, analyzeDocument, generateAiRecommendations } from "@/lib/recommendations";
+import { isUsingMockData, submitQuestionnaire, analyzeDocument, generateAiRecommendations, friendlyError } from "@/lib/recommendations";
 
 // ─── Static data ────────────────────────────────────────────────────────────
 
@@ -640,7 +640,7 @@ export default function FormPage() {
       router.push("/dashboard");
     } catch (err) {
       console.error('[Form submit error]', err);
-      setSubmitError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setSubmitError(friendlyError(err));
     } finally {
       setIsSubmitting(false);
     }

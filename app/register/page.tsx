@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
-import { signup } from '@/lib/recommendations';
+import { signup, friendlyError } from '@/lib/recommendations';
 import { AuthLeftPanel, MobileLogo } from '@/components/ui/auth-layout';
 
 function validateSaId(id: string): string | null {
@@ -82,12 +82,7 @@ export default function RegisterPage() {
         sessionStorage.setItem('user_email', user.email);
         router.push('/form');
       } catch (err) {
-        const msg = err instanceof Error ? err.message : '';
-        if (!msg || /internal server error|500|database|connection/i.test(msg)) {
-          setServerError('Something went wrong while creating your account. Please try again later.');
-        } else {
-          setServerError(msg);
-        }
+        setServerError(friendlyError(err));
       } finally {
         setIsSubmitting(false);
       }

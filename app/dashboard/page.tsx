@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { deleteUser, generateAiRecommendations, getUser, isUsingMockData, setPreferredCar as setPreferredCarApi, submitQuestionnaire, type Recommendation } from '@/lib/recommendations';
+import { deleteUser, friendlyError, generateAiRecommendations, getUser, isUsingMockData, setPreferredCar as setPreferredCarApi, submitQuestionnaire, type Recommendation } from '@/lib/recommendations';
 
 function formatCurrency(value: number | null) {
   if (value === null) return 'N/A';
@@ -375,9 +375,7 @@ export default function DashboardPage() {
       sessionStorage.setItem('result_source', 'ai');
       setIsEditing(false);
     } catch (err) {
-      setSaveError(
-        err instanceof Error ? err.message : 'Something went wrong. Please try again.'
-      );
+      setSaveError(friendlyError(err));
     } finally {
       setIsSaving(false);
     }
@@ -391,9 +389,7 @@ export default function DashboardPage() {
       sessionStorage.clear();
       router.push('/');
     } catch (err) {
-      setDeleteError(
-        err instanceof Error ? err.message : 'Failed to delete account. Please try again.'
-      );
+      setDeleteError(friendlyError(err));
       setIsDeleting(false);
     }
   }

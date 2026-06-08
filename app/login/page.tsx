@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, Suspense } from 'react';
-import { login, getUser, getUserRecommendations, forgotPassword } from '@/lib/recommendations';
+import { login, getUser, getUserRecommendations, forgotPassword, friendlyError } from '@/lib/recommendations';
 import { AnimatedForm } from '@/components/ui/auth-components';
 import { AuthLeftPanel, MobileLogo } from '@/components/ui/auth-layout';
 
@@ -76,7 +76,7 @@ function LoginForm() {
 
       router.push('/form');
     } catch (err) {
-      setServerError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+      setServerError(friendlyError(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -94,7 +94,7 @@ function LoginForm() {
         setResetUrl(window.location.origin + res.resetPath);
       }
     } catch (err) {
-      setServerError(err instanceof Error ? err.message : 'Something went wrong.');
+      setServerError(friendlyError(err));
     } finally {
       setIsSubmitting(false);
     }
