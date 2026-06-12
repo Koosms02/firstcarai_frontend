@@ -16,6 +16,7 @@ function LoginForm() {
   const [mode, setMode] = useState<Mode>('login');
   const [fields, setFields] = useState({ email: '', password: '' });
   const [forgotEmail, setForgotEmail] = useState('');
+  const [emailSent, setEmailSent] = useState(false);
   const [resetUrl, setResetUrl] = useState('');
   const [serverError, setServerError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -87,11 +88,14 @@ function LoginForm() {
     if (!forgotEmail.trim()) { setServerError('Please enter your email address.'); return; }
     setIsSubmitting(true);
     setServerError('');
+    setEmailSent(false);
     setResetUrl('');
     try {
       const res = await forgotPassword(forgotEmail.trim());
       if (res.resetPath) {
         setResetUrl(window.location.origin + res.resetPath);
+      } else {
+        setEmailSent(true);
       }
     } catch (err) {
       setServerError(friendlyError(err));
@@ -120,11 +124,11 @@ function LoginForm() {
           <div>
             <h2 className="font-bold text-3xl text-neutral-800">Forgot password</h2>
             <p className="mt-2 text-sm text-neutral-500">
-              Enter your email and we&apos;ll generate a secure reset link for you.
+              Enter your email and we&apos;ll send you a secure reset link.
             </p>
           </div>
 
-          {!resetUrl && (
+          {!emailSent && !resetUrl && (
             <form onSubmit={handleForgotPassword} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-neutral-700">Email address</label>
@@ -143,9 +147,33 @@ function LoginForm() {
                 disabled={isSubmitting}
                 className="h-10 w-full rounded-md bg-gradient-to-br from-zinc-200 to-zinc-200 font-medium text-sm disabled:opacity-60"
               >
-                {isSubmitting ? 'Generating link…' : 'Generate reset link →'}
+                {isSubmitting ? 'Sending…' : 'Send reset link →'}
               </button>
             </form>
+          )}
+
+          {emailSent && (
+            <div className="flex flex-col gap-4">
+              <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-4 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="shrink-0 text-green-600">
+                    <circle cx="10" cy="10" r="10" fill="currentColor" fillOpacity="0.15" />
+                    <path d="M6 10l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <p className="text-sm font-semibold text-green-700">Check your email</p>
+                </div>
+                <p className="text-sm text-green-600">
+                  If an account exists for <span className="font-medium">{forgotEmail}</span>, we&apos;ve sent a password reset link. The link expires in 1 hour.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setEmailSent(false); setForgotEmail(''); }}
+                className="text-sm text-blue-500 text-center"
+              >
+                Didn&apos;t receive it? Try again
+              </button>
+            </div>
           )}
 
           {resetUrl && (
@@ -165,19 +193,19 @@ function LoginForm() {
                     href={resetUrl}
                     className="text-xs border border-blue-400 bg-blue-500 text-white rounded px-2 py-1 hover:bg-blue-600 transition-colors"
                   >
-                    Open link →
+                    Open link &rarr;
                   </a>
                 </div>
               </div>
               <p className="text-xs text-gray-400">
-                This link expires in 1 hour. In production it would be sent to your email.
+                This link expires in 1 hour. Set up RESEND_API_KEY to send it via email instead.
               </p>
             </div>
           )}
 
           <button
             type="button"
-            onClick={() => { setMode('login'); setServerError(''); setResetUrl(''); }}
+            onClick={() => { setMode('login'); setServerError(''); setEmailSent(false); setResetUrl(''); }}
             className="text-sm text-blue-500 text-center"
           >
             ← Back to sign in

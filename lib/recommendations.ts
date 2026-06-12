@@ -441,13 +441,13 @@ export async function saveDocument(payload: {
   await request('/documents', { method: 'POST', body: JSON.stringify(payload) });
 }
 
-export async function forgotPassword(email: string): Promise<{ resetPath: string | null }> {
+export async function forgotPassword(email: string): Promise<{ message?: string; resetPath?: string | null }> {
   if (USE_MOCK_DATA) {
     await new Promise((resolve) => setTimeout(resolve, 400));
     const mockToken = 'mock-uuid-1234-5678-abcd-efgh';
     return { resetPath: `/r/${encodeURIComponent(email)}/${mockToken}` };
   }
-  return request<{ resetPath: string | null }>('/auth/forgot-password', {
+  return request<{ message?: string; resetPath?: string | null }>('/auth/forgot-password', {
     method: 'POST',
     body: JSON.stringify({ email }),
   });
