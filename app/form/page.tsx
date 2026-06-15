@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { isUsingMockData, submitQuestionnaire, analyzeDocument, generateAiRecommendations, friendlyError } from "@/lib/recommendations";
+import { isUsingMockData, submitQuestionnaire, analyzeDocument, saveDocument, generateAiRecommendations, friendlyError } from "@/lib/recommendations";
 
 // ─── Static data ────────────────────────────────────────────────────────────
 
@@ -530,6 +530,8 @@ export default function FormPage() {
       if (salary !== null) {
         set("net_salary", String(Math.round(salary)));
         setPayslipStatus("success");
+        const uid = sessionStorage.getItem("user_id");
+        if (uid) saveDocument({ userId: uid, documentType: "PAYSLIP", fileName: file.name, extractedData: { netSalary: salary } }).catch(() => {});
       } else {
         setPayslipStatus("error");
         setPayslipError("Couldn't find net salary in this payslip. Please try a different file.");
@@ -562,6 +564,8 @@ export default function FormPage() {
       set("expenses_loans", String(result.loans));
       set("expenses_other", String(result.other));
       setBankStatus("success");
+      const uid = sessionStorage.getItem("user_id");
+      if (uid) saveDocument({ userId: uid, documentType: "BANK_STATEMENT", fileName: file.name, extractedData: result }).catch(() => {});
     } catch {
       setBankStatus("error");
       setBankError("We couldn't read your statement — please try a different file.");
@@ -589,6 +593,8 @@ export default function FormPage() {
         if (result.city) set("city", result.city);
         setLocationSource("document");
         setUtilityStatus("success");
+        const uid = sessionStorage.getItem("user_id");
+        if (uid) saveDocument({ userId: uid, documentType: "UTILITY_BILL", fileName: file.name, extractedData: result }).catch(() => {});
       } else {
         setUtilityStatus("error");
         setUtilityError("Couldn't extract location — please select your province and city manually.");

@@ -542,6 +542,74 @@ export async function analyzeExpenses(text: string): Promise<{
   );
 }
 
+export type Document = {
+  id: string;
+  userId: string;
+  userEmail?: string;
+  documentType: 'PAYSLIP' | 'BANK_STATEMENT' | 'UTILITY_BILL';
+  fileName: string;
+  createdAt?: string | null;
+};
+
+export type Preference = {
+  id: string;
+  userId: string;
+  userEmail?: string;
+  carMake: string;
+  carModel: string;
+  carYear: number | null;
+  carPrice: number | null;
+  estimatedMonthlyCost: number;
+  selectedAt?: string | null;
+};
+
+export async function getDocuments(): Promise<Document[]> {
+  if (USE_MOCK_DATA) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return [
+      { id: 'doc-1', userId: 'mock-user-1', userEmail: 'alice@example.com', documentType: 'PAYSLIP', fileName: 'payslip_june2026.pdf', createdAt: '2026-06-10T08:30:00Z' },
+      { id: 'doc-2', userId: 'mock-user-1', userEmail: 'alice@example.com', documentType: 'UTILITY_BILL', fileName: 'eskom_bill_may2026.pdf', createdAt: '2026-06-10T08:31:00Z' },
+      { id: 'doc-3', userId: 'mock-user-2', userEmail: 'bob@example.com', documentType: 'BANK_STATEMENT', fileName: 'fnb_statement_may2026.pdf', createdAt: '2026-06-12T14:20:00Z' },
+      { id: 'doc-4', userId: 'mock-user-3', userEmail: 'charlie@example.com', documentType: 'PAYSLIP', fileName: 'payslip_may2026.pdf', createdAt: '2026-06-13T09:00:00Z' },
+      { id: 'doc-5', userId: 'mock-user-2', userEmail: 'bob@example.com', documentType: 'UTILITY_BILL', fileName: 'city_power_bill.pdf', createdAt: '2026-06-14T11:15:00Z' },
+    ];
+  }
+  const rows = await request<Array<Document & { user?: { email: string } }>>('/documents');
+  return rows.map((r) => ({ ...r, userEmail: r.user?.email ?? r.userEmail }));
+}
+
+export async function getPreferences(): Promise<Preference[]> {
+  if (USE_MOCK_DATA) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return [
+      { id: 'pref-1', userId: 'mock-user-1', userEmail: 'alice@example.com', carMake: 'Toyota', carModel: 'Corolla Cross', carYear: 2023, carPrice: 420000, estimatedMonthlyCost: 4850, selectedAt: '2026-06-11T10:00:00Z' },
+      { id: 'pref-2', userId: 'mock-user-2', userEmail: 'bob@example.com', carMake: 'Volkswagen', carModel: 'Polo', carYear: 2022, carPrice: 310000, estimatedMonthlyCost: 3600, selectedAt: '2026-06-13T16:45:00Z' },
+    ];
+  }
+  const rows = await request<Array<{
+    id: string;
+    userId: string;
+    make: string | null;
+    model: string | null;
+    year: number | null;
+    price: number | string | null;
+    estimatedMonthlyCost: number | string | null;
+    createdAt: string | null;
+    user?: { email: string };
+  }>>('/preferences');
+  return rows.map((r) => ({
+    id: r.id,
+    userId: r.userId,
+    userEmail: r.user?.email,
+    carMake: r.make ?? '',
+    carModel: r.model ?? '',
+    carYear: r.year,
+    carPrice: r.price != null ? Number(r.price) : null,
+    estimatedMonthlyCost: Number(r.estimatedMonthlyCost ?? 0),
+    selectedAt: r.createdAt,
+  }));
+}
+
 export function isUsingMockData() {
   return USE_MOCK_DATA;
 }
