@@ -719,96 +719,6 @@ export default function DashboardPage() {
     });
   }
 
-  // UX-024: Download PDF report
-  function downloadReport() {
-    const w = window.open('', '_blank');
-    if (!w) return;
-
-    const csExplanation = creditScore !== null ? getCreditScoreExplanation(creditScore) : null;
-
-    const recRows = recommendations.map((rec) => `
-      <tr>
-        <td style="padding:8px;border:1px solid #ddd;">${rec.car.make} ${rec.car.model}</td>
-        <td style="padding:8px;border:1px solid #ddd;">${rec.car.year ?? '-'}</td>
-        <td style="padding:8px;border:1px solid #ddd;">${formatCurrency(rec.car.price)}</td>
-        <td style="padding:8px;border:1px solid #ddd;">${formatCurrency(rec.loanCost)}</td>
-        <td style="padding:8px;border:1px solid #ddd;">${formatCurrency(rec.insuranceCost)}</td>
-        <td style="padding:8px;border:1px solid #ddd;">${formatCurrency(rec.fuelCost)}</td>
-        <td style="padding:8px;border:1px solid #ddd;">${formatCurrency(rec.maintenanceCost)}</td>
-        <td style="padding:8px;border:1px solid #ddd;font-weight:bold;">${formatCurrency(rec.estimatedMonthlyCost)}</td>
-        <td style="padding:8px;border:1px solid #ddd;">${Math.round(rec.score * 100)}%</td>
-      </tr>
-    `).join('');
-
-    const html = `<!DOCTYPE html>
-<html><head><title>FirstCar Recommendation Report</title>
-<style>
-  body { font-family: Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 40px 20px; color: #333; }
-  h1 { color: #2563eb; margin-bottom: 4px; }
-  h2 { color: #1e40af; border-bottom: 2px solid #2563eb; padding-bottom: 8px; margin-top: 32px; }
-  .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 20px 0; }
-  .summary-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; text-align: center; }
-  .summary-card .value { font-size: 24px; font-weight: bold; color: #1e40af; }
-  .summary-card .label { font-size: 12px; color: #64748b; text-transform: uppercase; }
-  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
-  th { background: #2563eb; color: white; padding: 10px 8px; text-align: left; }
-  .breakdown { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
-  .breakdown-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
-  .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8; text-align: center; }
-  @media print { body { padding: 10px; } }
-</style></head><body>
-<h1>FirstCar Recommendation Report</h1>
-<p style="color:#64748b;">Generated on ${new Date().toLocaleDateString('en-ZA', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-<p>Prepared for: <strong>${[answers.first_name, answers.last_name].filter(Boolean).join(' ') || email}</strong></p>
-
-<div class="summary">
-  <div class="summary-card"><div class="label">Credit Score</div><div class="value">${creditScore ?? 'N/A'}</div></div>
-  <div class="summary-card"><div class="label">Monthly Budget</div><div class="value">${formatCurrency(budget)}</div></div>
-  <div class="summary-card"><div class="label">Vehicles Found</div><div class="value">${recommendations.length}</div></div>
-</div>
-
-${creditScore !== null && csExplanation ? `
-<h2>Credit Score Analysis</h2>
-<p><strong>Score:</strong> ${creditScore} — <strong>${csExplanation.riskLevel}</strong></p>
-<p>${csExplanation.message}</p>
-<p><em>${csExplanation.impact}</em></p>
-` : ''}
-
-<h2>Affordability Breakdown</h2>
-<div class="breakdown">
-  <div>
-    <div class="breakdown-item"><span>Net Monthly Salary</span><span><strong>${formatCurrency(netSalary)}</strong></span></div>
-    <div class="breakdown-item"><span>Groceries</span><span>${formatCurrency(expGroceries)}</span></div>
-    <div class="breakdown-item"><span>Accounts</span><span>${formatCurrency(expAccounts)}</span></div>
-    <div class="breakdown-item"><span>Loans</span><span>${formatCurrency(expLoans)}</span></div>
-    <div class="breakdown-item"><span>Other Expenses</span><span>${formatCurrency(expOther)}</span></div>
-  </div>
-  <div>
-    <div class="breakdown-item"><span>Total Expenses</span><span><strong>${formatCurrency(totalExpenses)}</strong></span></div>
-    <div class="breakdown-item"><span>Disposable Income</span><span><strong>${formatCurrency(disposableIncome)}</strong></span></div>
-    <div class="breakdown-item"><span>Car Budget (20% of salary)</span><span style="color:#2563eb;font-weight:bold;">${formatCurrency(budget)}</span></div>
-  </div>
-</div>
-
-<h2>Recommended Vehicles</h2>
-<table>
-  <thead><tr>
-    <th>Vehicle</th><th>Year</th><th>Price</th><th>Loan</th><th>Insurance</th><th>Fuel</th><th>Maintenance</th><th>Total/mo</th><th>Match</th>
-  </tr></thead>
-  <tbody>${recRows}</tbody>
-</table>
-
-<div class="footer">
-  <p>This report is for informational purposes only. Actual costs may vary based on lending institution, insurance provider, and market conditions.</p>
-  <p>FirstCar &mdash; Your smart car recommendation partner</p>
-</div>
-</body></html>`;
-
-    w.document.write(html);
-    w.document.close();
-    setTimeout(() => w.print(), 500);
-  }
-
   const preferredCar = recommendations.find((r) => r.id === preferredCarId) ?? null;
 
   const EDITABLE_KEYS = new Set([
@@ -1201,17 +1111,6 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold text-gray-900">Your Overview</h2>
                     <div className="flex gap-2">
-                      {recommendations.length > 0 && (
-                        <button
-                          onClick={downloadReport}
-                          className="flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 transition-colors"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                            <path d="M8 2v8M5 7l3 3 3-3M3 12h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                          Download Report
-                        </button>
-                      )}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
