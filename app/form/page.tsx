@@ -526,7 +526,22 @@ export default function FormPage() {
       const { extractText } = await import("unpdf");
       const buffer = await file.arrayBuffer();
       const { text } = await extractText(new Uint8Array(buffer), { mergePages: true });
-      const salary = parseSalaryFromText(text);
+
+      // Try AI-based extraction first, fall back to client-side regex
+      let salary: number | null = null;
+      try {
+        const aiResult = await analyzeDocument(text, "PAYSLIP") as { netSalary: number | null };
+        if (aiResult.netSalary != null && aiResult.netSalary > 0) {
+          salary = aiResult.netSalary;
+        }
+      } catch {
+        // AI extraction failed — fall back to regex
+      }
+
+      if (salary === null) {
+        salary = parseSalaryFromText(text);
+      }
+
       if (salary !== null) {
         set("net_salary", String(Math.round(salary)));
         setPayslipStatus("success");

@@ -532,7 +532,7 @@ export default function DashboardPage() {
       setResultSource('api');
       setHasSubmittedForm(true);
       sessionStorage.setItem('recommendations', JSON.stringify(aiRecs));
-      sessionStorage.setItem('result_source', 'ai');
+      sessionStorage.setItem('result_source', 'api');
       setIsEditing(false);
     } catch (err) {
       setSaveError(friendlyError(err));
