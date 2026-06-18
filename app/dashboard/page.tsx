@@ -491,6 +491,186 @@ export default function DashboardPage() {
 
   const budget = parseCurrencyValue(answers.net_salary ?? '') * 0.20;
 
+  async function downloadReport() {
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-ZA', { year: 'numeric', month: 'long', day: 'numeric' });
+    const preferred = recommendations.find((r) => r.id === preferredCarId);
+    const netSalary = parseCurrencyValue(answers.net_salary ?? '');
+    const fmtR = (v: number) => `R ${Math.round(v).toLocaleString()}`;
+
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
+    let y = 16;
+
+    // -- Header --
+    doc.setFillColor(31, 41, 55);
+    doc.rect(0, 0, pageW, 28, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text('FirstCar Recommendation Report', margin, 13);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Generated on ${dateStr} for ${answers.first_name ?? ''} ${answers.last_name ?? ''} (${email})`, margin, 22);
+    y = 36;
+
+    // -- Financial Summary --
+    doc.setTextColor(31, 41, 55);
+    doc.setFontSize(13);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Financial Summary', margin, y);
+    y += 2;
+    doc.setDrawColor(229, 231, 235);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, pageW - margin, y);
+    y += 6;
+
+    const summaryItems = [
+      { label: 'Net Monthly Salary', value: netSalary > 0 ? fmtR(netSalary) : 'N/A' },
+      { label: 'Monthly Car Budget (20%)', value: budget > 0 ? fmtR(budget) : 'N/A' },
+      { label: 'Credit Score', value: creditScore !== null ? `${creditScore} (${getCreditScoreRating(creditScore).label})` : 'N/A' },
+    ];
+    const colW = (pageW - margin * 2) / summaryItems.length;
+    summaryItems.forEach((item, i) => {
+      const x = margin + i * colW;
+      doc.setFillColor(249, 250, 251);
+      doc.roundedRect(x, y, colW - 4, 18, 2, 2, 'F');
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(156, 163, 175);
+      doc.text(item.label.toUpperCase(), x + 4, y + 6);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(31, 41, 55);
+      doc.text(item.value, x + 4, y + 14);
+    });
+    y += 26;
+
+    // -- Preferences --
+    doc.setTextColor(31, 41, 55);
+    doc.setFontSize(13);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Your Preferences', margin, y);
+    y += 2;
+    doc.setDrawColor(229, 231, 235);
+    doc.line(margin, y, pageW - margin, y);
+    y += 6;
+
+    const prefItems = [
+      { label: 'Province', value: answers.location || '-' },
+      { label: 'Preferred Brand', value: answers.preferred_brand ? getBrandDisplayName(answers.preferred_brand) : 'Any' },
+      { label: 'Car Type', value: answers.car_type ? answers.car_type.charAt(0).toUpperCase() + answers.car_type.slice(1) : 'Any' },
+      { label: 'Fuel Type', value: answers.fuel_type ? answers.fuel_type.charAt(0).toUpperCase() + answers.fuel_type.slice(1) : 'Any' },
+      { label: 'Transmission', value: answers.transmission ? answers.transmission.charAt(0).toUpperCase() + answers.transmission.slice(1) : 'Any' },
+      { label: 'Experience', value: answers.years_licenced ? answers.years_licenced.replace(/-/g, ' ') : '-' },
+    ];
+    const prefColW = (pageW - margin * 2) / prefItems.length;
+    prefItems.forEach((item, i) => {
+      const x = margin + i * prefColW;
+      doc.setFillColor(249, 250, 251);
+      doc.roundedRect(x, y, prefColW - 3, 16, 2, 2, 'F');
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(156, 163, 175);
+      doc.text(item.label.toUpperCase(), x + 3, y + 5);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(31, 41, 55);
+      doc.text(item.value, x + 3, y + 12);
+    });
+    y += 22;
+
+    // -- Preferred Vehicle --
+    if (preferred) {
+      doc.setTextColor(31, 41, 55);
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Preferred Vehicle', margin, y);
+      y += 2;
+      doc.setDrawColor(229, 231, 235);
+      doc.line(margin, y, pageW - margin, y);
+      y += 5;
+      doc.setDrawColor(37, 99, 235);
+      doc.setLineWidth(1);
+      doc.line(margin, y, margin, y + 12);
+      doc.setLineWidth(0.5);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(31, 41, 55);
+      doc.text(`${preferred.car.make} ${preferred.car.model} ${preferred.car.year ?? ''}`, margin + 4, y + 5);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(107, 114, 128);
+      doc.text(`Monthly: ${fmtR(preferred.estimatedMonthlyCost)}  |  Loan: ${fmtR(preferred.loanCost)}  |  Insurance: ${fmtR(preferred.insuranceCost)}  |  Fuel: ${fmtR(preferred.fuelCost)}  |  Maintenance: ${fmtR(preferred.maintenanceCost)}`, margin + 4, y + 11);
+      y += 18;
+    }
+
+    // -- Recommendations Table --
+    doc.setTextColor(31, 41, 55);
+    doc.setFontSize(13);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`All Recommendations (${recommendations.length})`, margin, y);
+    y += 2;
+    doc.setDrawColor(229, 231, 235);
+    doc.line(margin, y, pageW - margin, y);
+    y += 4;
+
+    const tableHead = [['#', 'Vehicle', 'Year', 'Price', 'Monthly', 'Loan', 'Insurance', 'Fuel', 'Maint.', 'Match', 'Tags']];
+    const tableBody = recommendations.map((rec, i) => {
+      const badges = computeBadges(rec, recommendations, budget);
+      const confidence = computeConfidenceScore(rec, budget, creditScore, answers.years_licenced ?? '');
+      return [
+        String(i + 1),
+        `${rec.car.make} ${rec.car.model}`,
+        rec.car.year != null ? String(rec.car.year) : '-',
+        rec.car.price ? fmtR(rec.car.price) : '-',
+        fmtR(rec.estimatedMonthlyCost),
+        fmtR(rec.loanCost),
+        fmtR(rec.insuranceCost),
+        fmtR(rec.fuelCost),
+        fmtR(rec.maintenanceCost),
+        `${Math.round(confidence * 100)}%`,
+        badges.map((b) => b.label).join(', ') || '-',
+      ];
+    });
+
+    autoTable(doc, {
+      startY: y,
+      head: tableHead,
+      body: tableBody,
+      margin: { left: margin, right: margin },
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      headStyles: { fillColor: [31, 41, 55], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [249, 250, 251] },
+      didParseCell: (data) => {
+        if (data.section === 'body') {
+          const rec = recommendations[data.row.index];
+          if (rec && rec.id === preferredCarId) {
+            data.cell.styles.fillColor = [219, 234, 254];
+          }
+        }
+      },
+    });
+
+    // -- Footer --
+    const pageCount = doc.getNumberOfPages();
+    for (let p = 1; p <= pageCount; p++) {
+      doc.setPage(p);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(156, 163, 175);
+      const footY = doc.internal.pageSize.getHeight() - 8;
+      doc.text(`FirstCar - Your personalised car recommendation report - ${dateStr}`, margin, footY);
+      doc.text(`Page ${p} of ${pageCount}`, pageW - margin, footY, { align: 'right' });
+    }
+
+    doc.save(`FirstCar-Report-${now.toISOString().slice(0, 10)}.pdf`);
+  }
+
   const netSalary = parseCurrencyValue(answers.net_salary ?? '');
   const expGroceries = parseCurrencyValue(answers.expenses_groceries ?? '');
   const expAccounts = parseCurrencyValue(answers.expenses_accounts ?? '');
@@ -1111,6 +1291,15 @@ const profileFields = FIELD_CONFIG.filter(({ key }) => answers[key]);
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold text-gray-900">Your Overview</h2>
                     <div className="flex gap-2">
+                      <button
+                        onClick={downloadReport}
+                        disabled={recommendations.length === 0}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Download report"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
+                        Download Report
+                      </button>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
